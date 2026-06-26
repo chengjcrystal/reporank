@@ -6,6 +6,7 @@ Usage:
     python -m app.cli crawl --language python --min-stars 100 --max-repos 2000
     python -m app.cli build-index
     python -m app.cli stats
+    python -m app.cli evaluate
 """
 from __future__ import annotations
 
@@ -70,6 +71,17 @@ def cmd_stats(_args) -> None:
         db.close()
 
 
+def cmd_evaluate(_args) -> None:
+    from app.eval.evaluate import evaluate_all, format_report
+    from app.search.index import InvertedIndex
+    from app.search.engine import SearchEngine
+
+    index = InvertedIndex.load(settings.index_path)
+    engine = SearchEngine(index)
+    reports = evaluate_all(engine)
+    print(format_report(reports))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="GitHub Repo Search Engine pipeline")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -86,6 +98,7 @@ def main() -> None:
 
     sub.add_parser("build-index").set_defaults(func=cmd_build_index)
     sub.add_parser("stats").set_defaults(func=cmd_stats)
+    sub.add_parser("evaluate").set_defaults(func=cmd_evaluate)
 
     args = parser.parse_args()
     args.func(args)
