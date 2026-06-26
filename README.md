@@ -71,6 +71,26 @@ pip install "psycopg[binary]"
   `final = w_text·bm25 + w_pop·log(stars) + w_fresh·recency`, selectable via the
   `ranker` query param for A/B experiments (`bm25_only`, `bm25_v1`, `popularity_heavy`).
 
+## Ranking evaluation
+
+Ranking changes are measured, not eyeballed. A hand-labeled judgment set
+(`app/eval/qrels.py`) grades repos per query (0–3), and **nDCG@10 / MRR / P@5**
+(`app/eval/metrics.py`, from scratch) score each ranker variant on it:
+
+```bash
+python -m app.cli evaluate
+```
+
+| ranker           | nDCG@10 |  MRR  |  P@5  |
+|------------------|---------|-------|-------|
+| bm25_only        |  0.980  | 1.000 | 0.660 |
+| bm25_v1          |  0.970  | 1.000 | 0.640 |
+| popularity_heavy |  0.948  | 1.000 | 0.640 |
+
+On a topical, relevance-graded set pure BM25 expectedly leads; the blended
+rankers trade a little nDCG for popularity/recency signal that an offline
+relevance metric can't reward — the gap online CTR is there to capture.
+
 ## API
 
 | Endpoint | Purpose |
@@ -90,11 +110,12 @@ pytest -q
 ```
 
 BM25 is validated against an independent reference implementation on a hand-built
-corpus; the tokenizer and engine (filters, blended ranking) have unit tests too.
+corpus; the tokenizer, engine (filters, blended ranking), ranking metrics, and
+evaluation harness have unit tests too (31 in total).
 
 ## Roadmap
 
 - Semantic search via embeddings + pgvector (hybrid BM25 + cosine)
 - BM25F field weighting (name ≫ description ≫ README)
 - Typo tolerance (trigram / edit distance)
-- Redis result cache; nDCG evaluation on a labeled query set
+- Redis result cache

@@ -81,11 +81,29 @@ github-search/
 - Frontend SPA: search box w/ autocomplete, filter sidebar, result cards with
   score + latency badge, pagination, analytics panel.
 - Click logging + analytics endpoint (top queries, CTR, p50/p95 latency).
-- 15 passing tests; BM25 validated against an independent reference implementation.
+- Offline evaluation harness: hand-labeled relevance judgments (qrels) over the
+  seed corpus, with nDCG@10 / MRR / P@5 implemented from scratch. `python -m
+  app.cli evaluate` scores every ranker variant on the labeled query set so
+  ranking changes are measured, not eyeballed.
+- 31 passing tests; BM25 and the ranking metrics each validated against
+  independent / hand-computed reference values.
 
 Verified demos: "distributed systems projects" returns etcd/prometheus/k8s;
 `redis` under `bm25_only` → a build-your-own-redis tutorial (pure relevance) vs
 `popularity_heavy` → redis/redis; "similar to Redis" → valkey + dragonfly.
+
+Evaluation results (10 labeled queries, fixed clock):
+
+| ranker           | nDCG@10 |  MRR  |  P@5  |
+|------------------|---------|-------|-------|
+| bm25_only        |  0.980  | 1.000 | 0.660 |
+| bm25_v1          |  0.970  | 1.000 | 0.640 |
+| popularity_heavy |  0.948  | 1.000 | 0.640 |
+
+Reading: on a topical, relevance-graded judgment set pure BM25 expectedly scores
+highest; the blended rankers trade a little nDCG for popularity/recency signal
+that an offline relevance metric can't reward. That gap is exactly what online
+CTR is meant to capture, which is why both metrics are tracked.
 
 ## What is NOT yet built (roadmap / next phases)
 
@@ -93,8 +111,10 @@ Verified demos: "distributed systems projects" returns etcd/prometheus/k8s;
 - BM25F field weighting (name ≫ description ≫ README).
 - Typo tolerance (trigram / edit distance).
 - Redis result cache.
-- nDCG / MRR evaluation on a hand-labeled query set (hard relevance metrics).
 - Alembic migrations (currently uses create_all).
+
+(Done: nDCG / MRR / P@k evaluation on a hand-labeled query set — see
+"Evaluation results" above.)
 
 ## How to run it
 
@@ -105,6 +125,7 @@ pip install -r requirements.txt
 python -m app.cli seed          # load 30 demo repos (no token needed)
 python -m app.cli build-index   # build + save the inverted index
 uvicorn app.main:app --reload   # http://localhost:8000 ; API docs at /docs
+python -m app.cli evaluate      # score ranker variants on the labeled query set
 ```
 
 Crawl real data: put `GITHUB_TOKEN=...` in `.env`, then
