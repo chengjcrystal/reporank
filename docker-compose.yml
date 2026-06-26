@@ -1,0 +1,23 @@
+# Optional: run against Postgres instead of SQLite to demonstrate the "production"
+# storage path. Start the DB, then point DATABASE_URL at it in your .env:
+#   DATABASE_URL=postgresql+psycopg://ghsearch:ghsearch@localhost:5432/ghsearch
+# (install the driver: pip install "psycopg[binary]")
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ghsearch
+      POSTGRES_PASSWORD: ghsearch
+      POSTGRES_DB: ghsearch
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ghsearch"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

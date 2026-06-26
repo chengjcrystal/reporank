@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RepoRank — GitHub Repository Search</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">RepoRank</div>
+    <div class="tagline">BM25 + quality-aware ranking over GitHub repositories</div>
+    <button id="statsToggle" class="ghost-btn">Analytics</button>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <h3>Filters</h3>
+      <label>Language
+        <select id="language"><option value="">Any</option></select>
+      </label>
+      <label>Min stars
+        <input id="minStars" type="number" min="0" step="100" placeholder="e.g. 1000" />
+      </label>
+      <label>Updated after
+        <input id="updatedAfter" type="date" />
+      </label>
+      <label>Ranker
+        <select id="ranker">
+          <option value="bm25_v1">Blended (default)</option>
+          <option value="bm25_only">BM25 only</option>
+          <option value="popularity_heavy">Popularity-heavy</option>
+        </select>
+      </label>
+      <div class="topics-block">
+        <h4>Topics</h4>
+        <div id="topics" class="topic-chips"></div>
+      </div>
+      <button id="apply" class="primary-btn">Apply filters</button>
+    </aside>
+
+    <section class="content">
+      <div class="searchbar">
+        <input id="q" type="text" autocomplete="off"
+               placeholder="Try: distributed systems projects, FastAPI PostgreSQL, computer vision deployment" />
+        <ul id="suggestions" class="suggestions hidden"></ul>
+      </div>
+      <div id="meta" class="result-meta"></div>
+      <div id="results" class="results"></div>
+      <div id="pager" class="pager"></div>
+    </section>
+  </main>
+
+  <div id="statsPanel" class="stats-panel hidden"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
