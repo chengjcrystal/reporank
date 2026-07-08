@@ -45,4 +45,5 @@ def test_metrics_are_bounded(monkeypatch):
 def test_report_covers_all_rankers(monkeypatch):
     monkeypatch.setattr(evaluate, "QRELS", [LabeledQuery("redis cache", {1: 3})])
     reports = evaluate.evaluate_all(_engine())
-    assert {r.ranker for r in reports} == {"bm25_only", "bm25_v1", "popularity_heavy"}
+    assert {r.ranker for r in reports} == {
+        "bm25_only", "bm25_v1", "popularity_heavy", "bm25f_v1"}

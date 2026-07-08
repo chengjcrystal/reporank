@@ -17,15 +17,27 @@ import time
 from dataclasses import dataclass
 
 from app.search.bm25 import BM25
+from app.search.bm25f import BM25F
 from app.search.index import InvertedIndex
 from app.search.tokenizer import tokenize
 
 
-# Ranker variants: (w_text, w_pop, w_fresh). bm25_only isolates pure relevance.
-RANKERS: dict[str, tuple[float, float, float]] = {
-    "bm25_only": (1.0, 0.0, 0.0),
-    "bm25_v1": (1.0, 0.35, 0.20),       # default: relevance-led, quality-aware
-    "popularity_heavy": (1.0, 0.8, 0.2),
+@dataclass(frozen=True)
+class RankerConfig:
+    """A ranking variant: blend weights + which text-relevance model to use."""
+    w_text: float
+    w_pop: float
+    w_fresh: float
+    text_model: str = "bm25"   # "bm25" (flat) or "bm25f" (field-weighted)
+
+
+# Ranker variants. bm25_only isolates pure relevance; bm25f_v1 swaps the flat
+# text model for the field-weighted one so its lift is measurable in eval.
+RANKERS: dict[str, RankerConfig] = {
+    "bm25_only": RankerConfig(1.0, 0.0, 0.0),
+    "bm25_v1": RankerConfig(1.0, 0.35, 0.20),        # default: relevance-led, quality-aware
+    "popularity_heavy": RankerConfig(1.0, 0.8, 0.2),
+    "bm25f_v1": RankerConfig(1.0, 0.35, 0.20, text_model="bm25f"),
 }
 
 _HALF_LIFE_DAYS = 365.0  # a repo untouched for a year keeps ~half its freshness weight
@@ -68,6 +80,7 @@ class SearchEngine:
     def __init__(self, index: InvertedIndex):
         self.index = index
         self.bm25 = BM25(index)
+        self.bm25f = BM25F(index)
 
     def _passes_filters(self, doc_id: int, f: Filters) -> bool:
         meta = self.index.doc_meta.get(doc_id)
@@ -97,12 +110,14 @@ class SearchEngine:
         """Return (page_of_hits, total_matches)."""
         filters = filters or Filters()
         now = now or time.time()
-        w_text, w_pop, w_fresh = RANKERS.get(ranker, RANKERS["bm25_v1"])
+        cfg = RANKERS.get(ranker, RANKERS["bm25_v1"])
+        w_text, w_pop, w_fresh = cfg.w_text, cfg.w_pop, cfg.w_fresh
+        scorer = self.bm25f if cfg.text_model == "bm25f" else self.bm25
 
         terms = tokenize(query)
 
         if terms:
-            bm25_scores = self.bm25.score_terms(terms)
+            bm25_scores = scorer.score_terms(terms)
             candidates = list(bm25_scores.keys())
         else:
             # Empty query -> browse mode: every doc is a candidate, ranked by

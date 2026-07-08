@@ -24,7 +24,14 @@ def build_index(db: Session) -> tuple[InvertedIndex, dict]:
             topics=tuple(t.name for t in repo.topics),
             pushed_at=repo.pushed_at.timestamp() if repo.pushed_at else None,
         )
-        index.add_document(repo.id, repo.search_document or "", meta)
+        # Index each field separately so BM25F can weight name > description >
+        # topics > readme. Plain BM25 still sees the union of all fields.
+        index.add_document(repo.id, meta=meta, fields={
+            "name": repo.name or "",
+            "description": repo.description or "",
+            "topics": " ".join(t.name for t in repo.topics),
+            "readme": (repo.readme_text or "")[:4000],
+        })
 
     index.finalize()
     stats = {

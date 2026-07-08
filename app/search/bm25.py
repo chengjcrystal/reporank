@@ -54,7 +54,10 @@ class BM25:
             idf = self.idf(term)
             if idf == 0.0:
                 continue
-            for doc_id, tf in postings:
+            for doc_id, field_tfs in postings:
+                # Plain BM25 is field-agnostic: recover the whole-document term
+                # frequency by summing the per-field counts.
+                tf = sum(field_tfs)
                 dl = idx.doc_len.get(doc_id, 0)
                 denom = tf + k1 * (1 - b + b * dl / avgdl)
                 scores[doc_id] += idf * (tf * (k1 + 1)) / denom
