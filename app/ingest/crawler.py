@@ -46,6 +46,46 @@ def _respect_rate_limit(resp: httpx.Response) -> None:
         time.sleep(wait)
 
 
+# GitHub's search backend returns these transient server errors under load; they
+# clear on retry and must not abort a multi-hour crawl.
+_TRANSIENT_STATUS = {500, 502, 503, 504}
+
+
+def _search_request(client: httpx.Client, query: str, page: int,
+                    per_page: int, max_retries: int = 5) -> httpx.Response:
+    """Fetch one search page, retrying transient 5xx / network errors with
+    exponential backoff. Rate-limit (403) is left for the caller to handle so it
+    can sleep until the reset window."""
+    attempt = 0
+    while True:
+        try:
+            resp = client.get(
+                f"{API}/search/repositories",
+                params={"q": query, "sort": "stars", "order": "desc",
+                        "per_page": per_page, "page": page},
+            )
+        except httpx.TransportError as exc:
+            attempt += 1
+            if attempt > max_retries:
+                raise
+            wait = min(60, 2 ** attempt)
+            print(f"  network error ({exc!r}); retry {attempt}/{max_retries} in {wait}s")
+            time.sleep(wait)
+            continue
+
+        if resp.status_code in _TRANSIENT_STATUS:
+            attempt += 1
+            if attempt > max_retries:
+                resp.raise_for_status()  # exhausted retries: surface the error
+            wait = min(60, 2 ** attempt)
+            print(f"  {resp.status_code} on '{query}' page {page}; "
+                  f"retry {attempt}/{max_retries} in {wait}s")
+            time.sleep(wait)
+            continue
+
+        return resp
+
+
 def _star_slices(min_stars: int, max_stars: int, step: int):
     """Yield star-range query fragments covering [min_stars, max_stars]."""
     lo = min_stars
@@ -87,11 +127,7 @@ def crawl(
 
             page = state.last_page + 1
             while total < max_repos:
-                resp = client.get(
-                    f"{API}/search/repositories",
-                    params={"q": query, "sort": "stars", "order": "desc",
-                            "per_page": per_page, "page": page},
-                )
+                resp = _search_request(client, query, page, per_page)
                 if resp.status_code == 403:
                     _respect_rate_limit(resp)
                     time.sleep(5)

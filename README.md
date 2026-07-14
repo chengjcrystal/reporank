@@ -46,11 +46,20 @@ Then open **http://localhost:8000** and try `distributed systems projects` or
 echo "GITHUB_TOKEN=ghp_xxx" >> .env       # 60 -> 5000 req/hr
 python -m app.cli crawl --language python --min-stars 100 --max-repos 2000
 python -m app.cli build-index
+# or crawl many languages at once:
+python scripts/crawl_multi.py
 ```
 
 The crawler beats GitHub's 1000-results-per-query cap by **slicing the corpus
-into star-range buckets**, and respects rate limits via the response headers.
-Progress is checkpointed in `crawl_state`, so it resumes after a crash.
+into star-range buckets**, respects rate limits via the response headers, and
+retries transient 5xx / network errors with backoff. Progress is checkpointed in
+`crawl_state`, so it resumes from the exact in-flight bucket after a crash.
+
+This was run for real: a 7-language crawl (Python, JavaScript, TypeScript, Go,
+Rust, Java, C++) landed **157,083 repositories** in ~94 min, surviving two
+mid-crawl crashes (a transient GitHub 502 and a data collision) by resuming from
+`crawl_state` each time. Full numbers and caveats are in
+[BENCHMARKS.md](BENCHMARKS.md).
 
 ## Use Postgres instead of SQLite
 
