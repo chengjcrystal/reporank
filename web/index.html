@@ -4,11 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RepoRank: GitHub Repository Search</title>
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=4" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">RepoRank</div>
+    <div class="brand">repo<span class="slash">/</span>rank</div>
     <div class="tagline">BM25 + quality-aware ranking over GitHub repositories</div>
     <button id="statsToggle" class="ghost-btn">Analytics</button>
   </header>
@@ -43,9 +43,10 @@
     <section class="content">
       <div class="searchbar">
         <input id="q" type="text" autocomplete="off"
-               placeholder="Try: distributed systems projects, FastAPI PostgreSQL, computer vision deployment" />
+               placeholder="search repos...  try:  distributed systems  lang:rust  stars:>2k" />
         <ul id="suggestions" class="suggestions hidden"></ul>
       </div>
+      <div id="parsed" class="parsed"></div>
       <div id="meta" class="result-meta"></div>
       <div id="results" class="results"></div>
       <div id="pager" class="pager"></div>
@@ -54,6 +55,6 @@
 
   <div id="statsPanel" class="stats-panel hidden"></div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=4"></script>
 </body>
 </html>

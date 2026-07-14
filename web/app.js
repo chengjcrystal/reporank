@@ -25,13 +25,57 @@ async function loadFilters() {
   });
 }
 
+// Command-line filter syntax: `lang:rust stars:>2k topic:database` maps onto the
+// filters the API already supports. Everything else is the free-text query.
+function parseNum(s) {
+  s = s.toLowerCase();
+  const mult = s.endsWith("k") ? 1e3 : s.endsWith("m") ? 1e6 : 1;
+  return Math.round(parseFloat(s) * mult);
+}
+
+function parseQuery(raw) {
+  const out = { q: "", language: "", minStars: null, topics: [], unknown: [] };
+  const rest = [];
+  for (const w of raw.trim().split(/\s+/).filter(Boolean)) {
+    const m = w.match(/^([a-z]+):(.+)$/i);
+    if (!m) { rest.push(w); continue; }
+    const key = m[1].toLowerCase();
+    const val = m[2];
+    if (key === "lang" || key === "language") out.language = val;
+    else if (key === "topic") out.topics.push(val);
+    else if (key === "stars") {
+      const n = val.match(/^>?=?(\d[\d.]*[km]?)$/i);
+      n ? (out.minStars = parseNum(n[1])) : rest.push(w);
+    } else out.unknown.push(w);  // e.g. forks:, license: not supported server-side
+  }
+  out.q = rest.join(" ");
+  return out;
+}
+
+function renderParsed() {
+  const p = parseQuery($("q").value);
+  const chips = [];
+  if (p.q) chips.push(`<span class="token q">${escapeHtml(p.q)}</span>`);
+  if (p.language) chips.push(`<span class="token">lang <b>${escapeHtml(p.language)}</b></span>`);
+  if (p.minStars != null) chips.push(`<span class="token">stars <b>&ge; ${p.minStars.toLocaleString()}</b></span>`);
+  p.topics.forEach((t) => chips.push(`<span class="token">topic <b>${escapeHtml(t)}</b></span>`));
+  p.unknown.forEach((u) => chips.push(`<span class="token na">${escapeHtml(u)} (not a filter)</span>`));
+  $("parsed").innerHTML = chips.length
+    ? chips.join("")
+    : `<span class="hint">filter syntax: lang:rust · stars:&gt;2k · topic:database</span>`;
+}
+
 function buildParams() {
+  const parsed = parseQuery($("q").value);
   const p = new URLSearchParams();
-  p.set("q", $("q").value.trim());
-  if ($("language").value) p.set("language", $("language").value);
-  if ($("minStars").value) p.set("min_stars", $("minStars").value);
+  p.set("q", parsed.q);
+  const lang = parsed.language || $("language").value;
+  if (lang) p.set("language", lang);
+  const minStars = parsed.minStars != null ? parsed.minStars : ($("minStars").value || null);
+  if (minStars) p.set("min_stars", minStars);
   if ($("updatedAfter").value) p.set("updated_after", $("updatedAfter").value);
-  if (state.selectedTopics.size) p.set("topics", [...state.selectedTopics].join(","));
+  const topics = new Set([...state.selectedTopics, ...parsed.topics]);
+  if (topics.size) p.set("topics", [...topics].join(","));
   p.set("ranker", $("ranker").value);
   p.set("page", state.page);
   p.set("per_page", state.perPage);
@@ -93,9 +137,9 @@ async function runSearch() {
   const data = await fetch(`/api/search?${params}`).then((r) => r.json());
   state.total = data.total;
 
-  $("meta").innerHTML = `<span>${data.total.toLocaleString()} results</span>
+  $("meta").innerHTML = `<span><b>${data.total.toLocaleString()}</b> results</span>
     <span class="latency-badge">${data.latency_ms} ms</span>
-    <span>ranker: ${data.ranker}</span>`;
+    <span>ranker <b>${data.ranker}</b></span>`;
 
   const box = $("results");
   box.innerHTML = "";
@@ -124,7 +168,7 @@ function renderPager() {
 }
 
 async function showSuggestions() {
-  const q = $("q").value.trim();
+  const q = parseQuery($("q").value).q;
   const list = $("suggestions");
   if (q.length < 2) { list.classList.add("hidden"); return; }
   const data = await fetch(`/api/suggest?q=${encodeURIComponent(q)}`).then((r) => r.json());
@@ -160,6 +204,7 @@ async function showStats() {
   panel.classList.remove("hidden");
 }
 
+$("q").addEventListener("input", renderParsed);
 $("q").addEventListener("input", debounce(showSuggestions, 180));
 $("q").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { $("suggestions").classList.add("hidden"); state.page = 1; runSearch(); }
@@ -179,4 +224,5 @@ function initFromUrl() {
 
 loadFilters();
 initFromUrl();
+renderParsed();
 runSearch();
