@@ -61,3 +61,52 @@ Per-language (from the DB, `primary_language`):
   repo names collide with real repos on `full_name`, and it serves a different
   purpose (relevance evaluation). The eval harness builds its own fixture from the
   seed data, kept separate from the serving corpus.
+
+## Step 2: Index at scale (scaling curve)
+
+Built the inverted index over increasing prefixes of the corpus (ordered by stars
+desc, so each size is a superset of the previous). Measured with
+`scripts/bench_index.py`. Build time and heap peak are from `time.perf_counter`
+and `tracemalloc` around the build; snapshot size is the pickled artifact on disk.
+
+| repos | build (s) | vocab | postings | snapshot MB | heap peak MB | us/doc |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1,000 | 0.89 | 4,869 | 17,401 | 0.54 | 9.2 | 894 |
+| 5,000 | 3.00 | 13,265 | 76,401 | 2.27 | 28.3 | 600 |
+| 20,000 | 10.92 | 33,459 | 263,250 | 7.74 | 85.1 | 546 |
+| 50,000 | 23.95 | 62,462 | 616,777 | 17.94 | 173.7 | 479 |
+| 100,000 | 41.87 | 100,280 | 1,169,232 | 33.86 | 302.3 | 419 |
+| 157,083 | 46.50 | 138,113 | 1,756,590 | 50.82 | 389.7 | 296 |
+
+Full index also loads from the snapshot in **0.60s** and serves queries.
+
+### What the curve shows
+
+- **Build time is roughly linear in corpus size** (~300 us/doc at steady state;
+  the higher per-doc numbers at small N are fixed-cost and `tracemalloc` warmup
+  amortizing out). The full 157k build takes ~46s. It is an offline batch step on
+  a derived artifact, so this is not on the serving path.
+- **Vocabulary grows sublinearly (Heaps' law).** Docs grow 157x from the 1k
+  sample to the full corpus, but vocabulary grows only ~28x (4,869 to 138,113).
+  New documents keep introducing fewer unseen terms, which is the expected shape
+  for natural-language / code text.
+- **Postings grow linearly**, ~11 postings per document, to 1.76M total.
+- **The index fits in memory comfortably.** The persisted snapshot is 51 MB; the
+  `tracemalloc` heap peak of ~390 MB is the *build-time* peak (it includes
+  transient allocations and overstates the resident index). This validates the
+  in-memory design with real numbers: no sharding is needed at this scale.
+
+### Versus the 30-doc baseline
+
+The original demo corpus was 30 docs / 238 vocab / 427 postings / 0.011s build.
+The real corpus is ~5,200x the documents, ~580x the vocabulary (sublinear, as
+expected), ~4,100x the postings, and ~4,200x the build time. Every earlier number
+in the README that described the 30-doc toy has been replaced with these.
+
+### Lead-in to step 3
+
+Serving latency is not uniform. A tight query like `distributed systems` (2,391
+matches) returns its top page in ~8 ms, but a broad multi-term query like
+`react state management` (11,250 matches) takes ~176 ms because every matching
+doc is scored term-at-a-time and then min-max normalized. That tail is exactly
+what the step 3 latency harness and result cache target.

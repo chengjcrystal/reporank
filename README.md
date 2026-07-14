@@ -80,6 +80,19 @@ pip install "psycopg[binary]"
   `final = w_text·bm25 + w_pop·log(stars) + w_fresh·recency`, selectable via the
   `ranker` query param for A/B experiments (`bm25_only`, `bm25_v1`, `popularity_heavy`).
 
+## Scale
+
+Measured on the real **157,083-repo** corpus (`scripts/bench_index.py`):
+
+| repos | index build | vocab | postings | snapshot | load |
+|---:|---:|---:|---:|---:|---:|
+| 157,083 | ~46 s | 138,113 | 1,756,590 | 51 MB | 0.60 s |
+
+Build time is linear in corpus size (~300 us/doc); vocabulary grows sublinearly
+(Heaps' law). The whole index is 51 MB on disk and loads into RAM in under a
+second, which is why the in-memory design needs no sharding at this scale. The
+full scaling curve (1k to 157k) is in [BENCHMARKS.md](BENCHMARKS.md).
+
 ## Ranking evaluation
 
 Ranking changes are measured, not eyeballed. A hand-labeled judgment set
