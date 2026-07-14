@@ -1,16 +1,29 @@
 # RepoRank: GitHub Repository Search Engine
 
-A search engine for GitHub repositories with a **custom inverted index** and
-**BM25 / BM25F ranking implemented from scratch** (no Elasticsearch / Algolia),
-plus a quality-aware blended ranker (text relevance + popularity + recency). The
-ranker variants are compared head-to-head on a hand-labeled relevance set with
-nDCG / MRR / P@k; the project measures which ranking wins rather than claiming to
-beat any particular baseline.
+**In plain terms:** GitHub's search matches keywords, so genuinely strong repos get
+buried under name-collisions and forks. RepoRank re-ranks repository search by
+combining how well a repo's text matches your query with how strong the project is
+(stars, recency), and it measures whether that ranking is actually better on a
+hand-labeled test set instead of assuming it.
+
+Under the hood: a **custom inverted index** and **BM25 / BM25F ranking built from
+scratch** (no Elasticsearch / Algolia), a quality-aware blended ranker (text
+relevance + popularity + recency), and a ranking-regression gate that scores
+nDCG / MRR / P@5 against a frozen **157,083-repo** index in CI.
+
+> **157k** repos crawled · index loads in **0.6 s** · **~100 QPS** single-process,
+> **15-20x** with the cache · **49 tests** + a ranking gate running in CI
 
 ```
 distributed systems projects   ·   FastAPI PostgreSQL applications
 computer vision with deployment ·   projects similar to Redis
 ```
+
+![RepoRank search UI](docs/screenshot.png)
+
+Searching the real 157k-repo index: field-weighted ranking by default, live
+language / stars / topic filters, and a per-query latency badge. Searches are
+deep-linkable (`/?q=distributed+systems+projects`).
 
 ## Architecture
 
@@ -42,8 +55,10 @@ uvicorn app.main:app --reload   # open http://localhost:8000
 The seed set is a 30-repo demo so the app runs with no token. The real corpus
 (157k repos) comes from the crawler below.
 
-Then open **http://localhost:8000** and try `distributed systems projects` or
-`FastAPI PostgreSQL`. API docs are auto-generated at **/docs**.
+Then open **http://localhost:8000** for the search UI (a dark GitHub-style SPA with
+autocomplete, language / stars / topic filters, per-result score and latency
+badges, and an analytics panel) and try `distributed systems projects` or
+`FastAPI PostgreSQL`. Auto-generated API docs live at **/docs**.
 
 ## Crawl real data
 
@@ -134,13 +149,13 @@ python -m app.cli eval-gate     # fail if the shipped ranker regressed past the 
 | bm25_v1          |  0.340  | [0.191, 0.522]     | 0.587 | 0.220 |
 | bm25_only        |  0.183  | [0.057, 0.335]     | 0.326 | 0.100 |
 
-At real-corpus scale the story inverts from a toy corpus: **pure BM25 collapses**
-(0.183) because exact-lexical distractors bury the canonical repos, and blending
-in quality signal is what pulls the right repos into the top-10. That is the whole
-argument for the blended ranker, now measured against 150k distractors instead of
-asserted.
+At real-corpus scale the story inverts from a toy corpus. Pure BM25 collapses to
+0.183 because exact-lexical distractors bury the canonical repos, and blending in
+quality signal is what pulls the right repos into the top-10. That is the whole
+argument for the blended ranker, now backed by measurement against 150k
+distractors rather than intuition.
 
-**Shipped default is `bm25f_v1`, and the choice is deliberate.** popularity_heavy
+**Why `bm25f_v1` ships instead of the top-scoring ranker.** popularity_heavy
 has the higher point estimate (0.513 vs 0.424), but at n=10 the CIs overlap
 heavily, so the two are a statistical tie, not a ranking. The tie breaks on
 robustness: popularity_heavy (0.8 star weight) wins only on head queries where the
@@ -155,9 +170,9 @@ drops more than `MARGIN` (0.05) below a committed baseline, scored in CI against
 the frozen index (downloaded from a release asset). Full method and per-query
 detail are in [BENCHMARKS.md](BENCHMARKS.md).
 
-### Known limitations of the eval (stated, not smoothed over)
+### Known limitations of the eval
 
-This judgment set is small, and the numbers should be read with two caveats:
+This judgment set is small, and the numbers come with two honest caveats:
 
 - **n=10 queries: the top two rankers are statistically indistinguishable.** The
   bootstrap 95% CIs overlap heavily (popularity_heavy [0.385, 0.662] vs bm25f_v1

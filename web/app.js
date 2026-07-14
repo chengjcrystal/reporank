@@ -77,7 +77,17 @@ function escapeHtml(s) {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
+function syncUrl() {
+  const q = $("q").value.trim();
+  const u = new URLSearchParams();
+  if (q) u.set("q", q);
+  if ($("ranker").value) u.set("ranker", $("ranker").value);
+  const qs = u.toString();
+  history.replaceState(null, "", qs ? `?${qs}` : location.pathname);
+}
+
 async function runSearch() {
+  syncUrl();
   const params = buildParams();
   const data = await fetch(`/api/search?${params}`).then((r) => r.json());
   state.total = data.total;
@@ -160,5 +170,12 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest(".searchbar")) $("suggestions").classList.add("hidden");
 });
 
+function initFromUrl() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("q")) $("q").value = params.get("q");
+  if (params.get("ranker")) $("ranker").value = params.get("ranker");
+}
+
 loadFilters();
+initFromUrl();
 runSearch();
