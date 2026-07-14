@@ -1,6 +1,6 @@
 # RepoRank: GitHub Repository Search Engine
 
-**In plain terms:** GitHub's search matches keywords, so genuinely strong repos get
+**TLDR:** GitHub's search matches keywords, so genuinely strong repos get
 buried under name-collisions and forks. RepoRank re-ranks repository search by
 combining how well a repo's text matches your query with how strong the project is
 (stars, recency), and it measures whether that ranking is actually better on a
@@ -118,7 +118,9 @@ Build time is linear in corpus size (~300 us/doc); vocabulary grows sublinearly
 second, which is why the in-memory design needs no sharding at this scale. The
 full scaling curve (1k to 157k) is in [BENCHMARKS.md](BENCHMARKS.md).
 
-**Serving latency + cache.** Load-tested over the full corpus
+### Serving latency + cache
+
+Load-tested over the full corpus
 (`scripts/bench_latency.py`), a single process scoring BM25 term-at-a-time
 saturates at ~100 QPS and its tail latency balloons under concurrency (p99 1.1 s
 at 32 concurrent). An LRU result cache (`app/search/cache.py`, on by default via
@@ -155,8 +157,9 @@ quality signal is what pulls the right repos into the top-10. That is the whole
 argument for the blended ranker, now backed by measurement against 150k
 distractors rather than intuition.
 
-**Why `bm25f_v1` ships instead of the top-scoring ranker.** popularity_heavy
-has the higher point estimate (0.513 vs 0.424), but at n=10 the CIs overlap
+### Why bm25f_v1 ships instead of the top-scoring ranker
+
+popularity_heavy has the higher point estimate (0.513 vs 0.424), but at n=10 the CIs overlap
 heavily, so the two are a statistical tie, not a ranking. The tie breaks on
 robustness: popularity_heavy (0.8 star weight) wins only on head queries where the
 relevant repo is already the most-starred, and it fails on specific / tail queries
@@ -165,10 +168,12 @@ by sorting popular-but-off-topic repos to the top (e.g. `raft consensus algorith
 bm25f_v1 is content-driven and is the field-weighting the project exists to
 demonstrate, so it ships; popularity_heavy stays as a documented comparison.
 
-**The gate** (`app/eval/gate.py`) fails the build if the shipped ranker's nDCG@10
-drops more than `MARGIN` (0.05) below a committed baseline, scored in CI against
-the frozen index (downloaded from a release asset). Full method and per-query
-detail are in [BENCHMARKS.md](BENCHMARKS.md).
+### The gate
+
+`app/eval/gate.py` fails the build if the shipped ranker's nDCG@10 drops more than
+`MARGIN` (0.05) below a committed baseline, scored in CI against the frozen index
+(downloaded from a release asset). Full method and per-query detail are in
+[BENCHMARKS.md](BENCHMARKS.md).
 
 ### Known limitations of the eval
 

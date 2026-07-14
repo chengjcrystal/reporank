@@ -79,11 +79,12 @@ function escapeHtml(s) {
 
 function syncUrl() {
   const q = $("q").value.trim();
-  const u = new URLSearchParams();
-  if (q) u.set("q", q);
-  if ($("ranker").value) u.set("ranker", $("ranker").value);
-  const qs = u.toString();
-  history.replaceState(null, "", qs ? `?${qs}` : location.pathname);
+  if (!q) { history.replaceState(null, "", location.pathname); return; }
+  const u = new URLSearchParams({ q });
+  if ($("ranker").value && $("ranker").value !== "bm25f_v1") {
+    u.set("ranker", $("ranker").value);  // only when off the default
+  }
+  history.replaceState(null, "", `?${u}`);
 }
 
 async function runSearch() {
