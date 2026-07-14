@@ -110,3 +110,54 @@ matches) returns its top page in ~8 ms, but a broad multi-term query like
 `react state management` (11,250 matches) takes ~176 ms because every matching
 doc is scored term-at-a-time and then min-max normalized. That tail is exactly
 what the step 3 latency harness and result cache target.
+
+## Step 3: Latency under load + result cache
+
+Load-tested the engine over the full 157k-repo index with `scripts/bench_latency.py`.
+Workload: 400 distinct 1-3 term queries, Zipf-sampled so a head recurs like real
+traffic; closed-loop (C worker threads issuing back-to-back for 5s per level).
+Search scoring is CPU-bound Python, so this mirrors one uvicorn worker under the
+GIL: raising concurrency exposes queueing, not extra throughput.
+
+**Cache OFF** (`cache_size=0`):
+
+| concurrency | QPS | p50 ms | p95 ms | p99 ms |
+|---:|---:|---:|---:|---:|
+| 1 | 100 | 7.3 | 23.8 | 64.3 |
+| 2 | 112 | 12.8 | 46.6 | 84.8 |
+| 4 | 91 | 33.5 | 114.1 | 161.2 |
+| 8 | 91 | 63.9 | 230.4 | 322.6 |
+| 16 | 91 | 102.6 | 493.6 | 642.2 |
+| 32 | 100 | 96.9 | 614.1 | 1120.2 |
+
+**Cache ON** (LRU, capacity 256, measured hit-rate **94.3%**):
+
+| concurrency | QPS | p50 ms | p95 ms | p99 ms |
+|---:|---:|---:|---:|---:|
+| 1 | 1526 | <0.1 | 3.4 | 16.4 |
+| 2 | 2021 | <0.1 | <0.1 | 28.7 |
+| 4 | 1830 | <0.1 | <0.1 | 69.4 |
+| 8 | 1399 | <0.1 | 3.3 | 167.4 |
+| 16 | 1091 | <0.1 | 49.5 | 360.6 |
+| 32 | 874 | <0.1 | 126.2 | 614.1 |
+
+### What the numbers say
+
+- **Throughput saturates almost immediately without the cache.** A single Python
+  process scoring BM25 term-at-a-time tops out at ~90-110 QPS, and it stays there
+  no matter how many threads pile on, because the GIL serializes the CPU-bound
+  scoring. Extra concurrency buys only queueing: p95 goes from 24 ms at C=1 to
+  614 ms at C=32, and p99 reaches 1.1 s. That is the degradation point.
+- **The cache lifts effective throughput ~15-20x** on this Zipfian workload
+  (100 to ~1500-2000 QPS) because a 94% hit is a dict lookup measured in
+  microseconds, so the median request is served in under 0.1 ms.
+- **The cache is not a free lunch, and the data shows where it stops helping.**
+  Cache-on throughput peaks around C=2 (~2000 QPS) and then *declines* to ~874 QPS
+  at C=32: the 5.7% cold misses are still GIL-bound, and piling on threads adds
+  lock and scheduler contention around those misses. The miss tail is why p99
+  climbs back to 360-614 ms at high concurrency even with the cache on.
+- **Honest takeaway.** The cache is the right first move (it removes the head of
+  the traffic from the hot path for almost nothing), but the ceiling past it is
+  the single-process GIL. The next lever is multi-process workers (each with its
+  own in-memory index) or moving the inner scoring loop out of pure Python, not a
+  bigger cache.

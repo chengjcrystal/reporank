@@ -93,6 +93,15 @@ Build time is linear in corpus size (~300 us/doc); vocabulary grows sublinearly
 second, which is why the in-memory design needs no sharding at this scale. The
 full scaling curve (1k to 157k) is in [BENCHMARKS.md](BENCHMARKS.md).
 
+**Serving latency + cache.** Load-tested over the full corpus
+(`scripts/bench_latency.py`), a single process scoring BM25 term-at-a-time
+saturates at ~100 QPS and its tail latency balloons under concurrency (p99 1.1 s
+at 32 concurrent). An LRU result cache (`app/search/cache.py`, on by default via
+`cache_size`) at a 94% hit-rate on Zipfian traffic lifts effective throughput
+~15-20x and serves the median request in under 0.1 ms. The cold-miss tail stays
+GIL-bound, so the next lever past the cache is multi-process workers, not a
+bigger cache. Full percentile tables are in [BENCHMARKS.md](BENCHMARKS.md).
+
 ## Ranking evaluation
 
 Ranking changes are measured, not eyeballed. A hand-labeled judgment set

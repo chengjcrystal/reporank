@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 from app.search.bm25 import BM25
 from app.search.bm25f import BM25F
+from app.search.cache import LRUCache
 from app.search.index import InvertedIndex
 from app.search.tokenizer import tokenize
 
@@ -77,10 +78,13 @@ def _normalize(values: dict[int, float]) -> dict[int, float]:
 
 
 class SearchEngine:
-    def __init__(self, index: InvertedIndex):
+    def __init__(self, index: InvertedIndex, cache_size: int = 0):
         self.index = index
         self.bm25 = BM25(index)
         self.bm25f = BM25F(index)
+        # Optional LRU result cache. Off by default (cache_size=0) so eval and
+        # tests stay deterministic; the API turns it on for live serving.
+        self.cache = LRUCache(cache_size) if cache_size > 0 else None
 
     def _passes_filters(self, doc_id: int, f: Filters) -> bool:
         meta = self.index.doc_meta.get(doc_id)
@@ -109,6 +113,18 @@ class SearchEngine:
     ) -> tuple[list[SearchHit], int]:
         """Return (page_of_hits, total_matches)."""
         filters = filters or Filters()
+
+        # Serve from cache when enabled and using the live clock. An explicit
+        # `now` (eval / tests) bypasses the cache so results stay reproducible.
+        use_cache = self.cache is not None and now is None
+        cache_key = None
+        if use_cache:
+            cache_key = (query, ranker, page, per_page, filters.language,
+                         filters.min_stars, filters.topics, filters.updated_after)
+            cached = self.cache.get(cache_key)
+            if cached is not None:
+                return cached
+
         now = now or time.time()
         cfg = RANKERS.get(ranker, RANKERS["bm25_v1"])
         w_text, w_pop, w_fresh = cfg.w_text, cfg.w_pop, cfg.w_fresh
@@ -149,4 +165,7 @@ class SearchEngine:
         hits.sort(key=lambda h: h.score, reverse=True)
 
         start = (page - 1) * per_page
-        return hits[start:start + per_page], total
+        result = (hits[start:start + per_page], total)
+        if use_cache:
+            self.cache.put(cache_key, result)
+        return result

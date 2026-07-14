@@ -22,7 +22,7 @@ class EngineState:
             self.engine = None
             return False
         index = InvertedIndex.load(settings.index_path)
-        self.engine = SearchEngine(index)
+        self.engine = SearchEngine(index, cache_size=settings.cache_size)
         return True
 
     def require(self) -> SearchEngine:
