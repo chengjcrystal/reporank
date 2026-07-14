@@ -120,15 +120,25 @@ python -m app.cli eval-gate     # fail if the shipped ranker regressed past the 
 | ranker           | nDCG@10 | 95% CI (bootstrap) |  MRR  |  P@5  |
 |------------------|---------|--------------------|-------|-------|
 | popularity_heavy |  0.513  | [0.385, 0.662]     | 0.625 | 0.320 |
-| bm25f_v1         |  0.424  | [0.281, 0.595]     | 0.650 | 0.260 |
+| **bm25f_v1** (shipped) | 0.424 | [0.281, 0.595] | 0.650 | 0.260 |
 | bm25_v1          |  0.340  | [0.191, 0.522]     | 0.587 | 0.220 |
 | bm25_only        |  0.183  | [0.057, 0.335]     | 0.326 | 0.100 |
 
 At real-corpus scale the story inverts from a toy corpus: **pure BM25 collapses**
-(0.183) because exact-lexical distractors bury the canonical repos, and
-**popularity/field-weighted blending wins** by pulling the right repos into the
-top-10. That is the whole argument for the blended ranker, now measured against
-150k distractors instead of asserted.
+(0.183) because exact-lexical distractors bury the canonical repos, and blending
+in quality signal is what pulls the right repos into the top-10. That is the whole
+argument for the blended ranker, now measured against 150k distractors instead of
+asserted.
+
+**Shipped default is `bm25f_v1`, and the choice is deliberate.** popularity_heavy
+has the higher point estimate (0.513 vs 0.424), but at n=10 the CIs overlap
+heavily, so the two are a statistical tie, not a ranking. The tie breaks on
+robustness: popularity_heavy (0.8 star weight) wins only on head queries where the
+relevant repo is already the most-starred, and it fails on specific / tail queries
+by sorting popular-but-off-topic repos to the top (e.g. `raft consensus algorithm`:
+0.333 vs bm25f_v1's 0.527, because `tikv/raft-rs` is on-topic but not a mega-star).
+bm25f_v1 is content-driven and is the field-weighting the project exists to
+demonstrate, so it ships; popularity_heavy stays as a documented comparison.
 
 **The gate** (`app/eval/gate.py`) fails the build if the shipped ranker's nDCG@10
 drops more than `MARGIN` (0.05) below a committed baseline. Confidence intervals

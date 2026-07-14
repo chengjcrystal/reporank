@@ -17,10 +17,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Fetch frozen eval index (for the ranking gate)
+        # The 157k-repo frozen index is too large to commit, so it lives as a
+        # GitHub release asset. Downloading it here makes the ranking-regression
+        # gate enforce in cloud CI against the identical snapshot used locally.
+        # If the asset is not present yet, the gate test skips (stays green)
+        # rather than breaking the build.
+        run: |
+          curl -fsSL -o eval_index.pkl \
+            https://github.com/chengjcrystal/reporank/releases/download/eval-index-v1/eval_index.pkl \
+            && echo "frozen eval index downloaded; gate will enforce" \
+            || echo "frozen eval index not available; gate will skip"
       - name: Run tests (includes the ranking-regression gate)
-        # The gate test scores nDCG against the frozen eval index. That snapshot
-        # is built from the crawled corpus (`python -m app.cli freeze-eval`) and
-        # is gitignored, so on a stock runner the gate test SKIPS rather than
-        # fails. To enforce the gate in cloud CI, restore eval_index.pkl from a
-        # cache/artifact before this step. It runs for real in local pre-push CI.
         run: pytest -q

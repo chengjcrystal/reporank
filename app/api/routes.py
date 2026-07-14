@@ -14,7 +14,7 @@ from app.models import Repository, SearchLog, Topic
 from app.schemas import (
     ClickEvent, FiltersResponse, RepoResult, SearchResponse, SuggestResponse,
 )
-from app.search.engine import Filters, RANKERS
+from app.search.engine import DEFAULT_RANKER, Filters, RANKERS
 
 router = APIRouter(prefix="/api")
 
@@ -42,14 +42,14 @@ def search(
     min_stars: int | None = None,
     topics: str | None = Query(None, description="Comma-separated topics (AND)"),
     updated_after: str | None = Query(None, description="ISO date, e.g. 2025-01-01"),
-    ranker: str = "bm25_v1",
+    ranker: str = DEFAULT_RANKER,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_session),
 ):
     engine = state.require()
     if ranker not in RANKERS:
-        ranker = "bm25_v1"
+        ranker = DEFAULT_RANKER
 
     updated_ts = None
     if updated_after:

@@ -240,10 +240,22 @@ repos; their real stats are kept and identity pinned to the label.
   and the second labeled repo falls out of the top 10 entirely. Popularity
   blending pulls `facebook/react` to rank 1 and lifts nDCG to 0.513. This is the
   measured case for the blended ranker, which the toy corpus could not make.
-- **The blend that wins is popularity-heavy here**, with field-weighted BM25F
-  second. Which ranker to actually ship is a product call (popularity-heavy can
-  over-favor stars on other traffic), but the eval now gives real signal to make
-  it on.
+- **The top two rankers are a statistical tie, and the shipped default is
+  bm25f_v1.** popularity_heavy's point estimate (0.513) is nominally above
+  bm25f_v1's (0.424), but at n=10 the bootstrap CIs overlap heavily
+  ([0.385, 0.662] vs [0.281, 0.595]), so the difference is not distinguishable from
+  noise: it is a tie, not a lead. The tie breaks on robustness, not on the point
+  estimate. Per query, popularity_heavy is actually **worse than bm25f_v1 on 5 of
+  the 10 queries**; its aggregate comes entirely from head queries where the
+  relevant repos happen to be the most-starred (in memory key value store: 0.613
+  vs 0.252; monitoring and metrics: 0.850 vs 0.387). On specific / tail queries it
+  fails by sorting popular-but-off-topic repos to the top: **raft consensus
+  algorithm scores 0.333 for popularity_heavy vs 0.527 for bm25f_v1**, because the
+  on-topic repo (`tikv/raft-rs`) is not a mega-star and an 0.8 star weight buries
+  it. bm25f_v1 is content-driven and is the field-weighting this project exists to
+  demonstrate, so it ships; popularity_heavy stays in the eval as a documented
+  comparison, with that failure mode recorded as the reason it is not shipped
+  despite the higher point estimate.
 
 ### The gate, and why it is built the way it is
 

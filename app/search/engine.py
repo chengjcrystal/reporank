@@ -36,10 +36,12 @@ class RankerConfig:
 # text model for the field-weighted one so its lift is measurable in eval.
 RANKERS: dict[str, RankerConfig] = {
     "bm25_only": RankerConfig(1.0, 0.0, 0.0),
-    "bm25_v1": RankerConfig(1.0, 0.35, 0.20),        # default: relevance-led, quality-aware
+    "bm25_v1": RankerConfig(1.0, 0.35, 0.20),        # flat-BM25 blend
     "popularity_heavy": RankerConfig(1.0, 0.8, 0.2),
-    "bm25f_v1": RankerConfig(1.0, 0.35, 0.20, text_model="bm25f"),
+    "bm25f_v1": RankerConfig(1.0, 0.35, 0.20, text_model="bm25f"),  # shipped default
 }
+
+DEFAULT_RANKER = "bm25f_v1"
 
 _HALF_LIFE_DAYS = 365.0  # a repo untouched for a year keeps ~half its freshness weight
 
@@ -106,7 +108,7 @@ class SearchEngine:
         self,
         query: str,
         filters: Filters | None = None,
-        ranker: str = "bm25_v1",
+        ranker: str = DEFAULT_RANKER,
         page: int = 1,
         per_page: int = 20,
         now: float | None = None,
@@ -126,7 +128,7 @@ class SearchEngine:
                 return cached
 
         now = now or time.time()
-        cfg = RANKERS.get(ranker, RANKERS["bm25_v1"])
+        cfg = RANKERS.get(ranker, RANKERS[DEFAULT_RANKER])
         w_text, w_pop, w_fresh = cfg.w_text, cfg.w_pop, cfg.w_fresh
         scorer = self.bm25f if cfg.text_model == "bm25f" else self.bm25
 
