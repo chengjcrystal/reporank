@@ -1,6 +1,5 @@
 """Evaluator tests on a small synthetic index, independent of the seed data."""
 from app.eval import evaluate
-from app.eval.qrels import LabeledQuery
 from app.search.engine import SearchEngine
 from app.search.index import DocMeta, InvertedIndex
 
@@ -20,30 +19,28 @@ def _engine():
     return SearchEngine(idx)
 
 
-def test_perfect_ranking_scores_one(monkeypatch):
+def test_perfect_ranking_scores_one():
     # A single query whose only relevant doc is the obvious top hit.
-    monkeypatch.setattr(evaluate, "QRELS", [
-        LabeledQuery("redis cache", {1: 3}),
-    ])
-    report = evaluate.evaluate_ranker(_engine(), "bm25_only")
+    qrels = {"redis cache": {1: 3.0}}
+    report = evaluate.evaluate_ranker(_engine(), "bm25_only", qrels)
     assert report.ndcg == 1.0
     assert report.mrr == 1.0
 
 
-def test_metrics_are_bounded(monkeypatch):
-    monkeypatch.setattr(evaluate, "QRELS", [
-        LabeledQuery("redis cache", {1: 3}),
-        LabeledQuery("python web framework", {2: 3}),
-        LabeledQuery("react frontend", {3: 3}),
-    ])
-    for report in evaluate.evaluate_all(_engine()):
+def test_metrics_are_bounded():
+    qrels = {
+        "redis cache": {1: 3.0},
+        "python web framework": {2: 3.0},
+        "react frontend": {3: 3.0},
+    }
+    for report in evaluate.evaluate_all(_engine(), qrels):
         assert 0.0 <= report.ndcg <= 1.0
         assert 0.0 <= report.mrr <= 1.0
         assert 0.0 <= report.precision <= 1.0
 
 
-def test_report_covers_all_rankers(monkeypatch):
-    monkeypatch.setattr(evaluate, "QRELS", [LabeledQuery("redis cache", {1: 3})])
-    reports = evaluate.evaluate_all(_engine())
+def test_report_covers_all_rankers():
+    qrels = {"redis cache": {1: 3.0}}
+    reports = evaluate.evaluate_all(_engine(), qrels)
     assert {r.ranker for r in reports} == {
         "bm25_only", "bm25_v1", "popularity_heavy", "bm25f_v1"}

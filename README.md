@@ -102,25 +102,40 @@ at 32 concurrent). An LRU result cache (`app/search/cache.py`, on by default via
 GIL-bound, so the next lever past the cache is multi-process workers, not a
 bigger cache. Full percentile tables are in [BENCHMARKS.md](BENCHMARKS.md).
 
-## Ranking evaluation
+## Ranking evaluation + CI gate
 
 Ranking changes are measured, not eyeballed. A hand-labeled judgment set
-(`app/eval/qrels.py`) grades repos per query (0–3), and **nDCG@10 / MRR / P@5**
-(`app/eval/metrics.py`, from scratch) score each ranker variant on it:
+(`app/eval/qrels.py`) grades repos per query (0-3, keyed on repo full_name), and
+**nDCG@10 / MRR / P@5** (`app/eval/metrics.py`, from scratch) score each ranker
+variant. The eval runs against a **frozen snapshot of the full 157k-repo index**
+with the labeled repos embedded, so the ranker has to surface them past 150k+ real
+distractors:
 
 ```bash
-python -m app.cli evaluate
+python -m app.cli freeze-eval   # inject labels, build + freeze the eval index, write baseline
+python -m app.cli evaluate      # score every ranker on the frozen index
+python -m app.cli eval-gate     # fail if the shipped ranker regressed past the margin
 ```
 
-| ranker           | nDCG@10 |  MRR  |  P@5  |
-|------------------|---------|-------|-------|
-| bm25_only        |  0.980  | 1.000 | 0.660 |
-| bm25_v1          |  0.970  | 1.000 | 0.640 |
-| popularity_heavy |  0.948  | 1.000 | 0.640 |
+| ranker           | nDCG@10 | 95% CI (bootstrap) |  MRR  |  P@5  |
+|------------------|---------|--------------------|-------|-------|
+| popularity_heavy |  0.513  | [0.385, 0.662]     | 0.625 | 0.320 |
+| bm25f_v1         |  0.424  | [0.281, 0.595]     | 0.650 | 0.260 |
+| bm25_v1          |  0.340  | [0.191, 0.522]     | 0.587 | 0.220 |
+| bm25_only        |  0.183  | [0.057, 0.335]     | 0.326 | 0.100 |
 
-On a topical, relevance-graded set pure BM25 expectedly leads; the blended
-rankers trade a little nDCG for popularity/recency signal that an offline
-relevance metric can't reward — the gap online CTR is there to capture.
+At real-corpus scale the story inverts from a toy corpus: **pure BM25 collapses**
+(0.183) because exact-lexical distractors bury the canonical repos, and
+**popularity/field-weighted blending wins** by pulling the right repos into the
+top-10. That is the whole argument for the blended ranker, now measured against
+150k distractors instead of asserted.
+
+**The gate** (`app/eval/gate.py`) fails the build if the shipped ranker's nDCG@10
+drops more than `MARGIN` (0.05) below a committed baseline. Confidence intervals
+are reported via bootstrap over the queries but are **not** gated on: at n=10 the
+CI is wide (see the table) and would flap, so the gate uses the point estimate
+with a stated margin and the coarseness is documented, not hidden. Full method and
+per-query detail are in [BENCHMARKS.md](BENCHMARKS.md).
 
 ## API
 

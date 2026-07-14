@@ -1,0 +1,44 @@
+{
+  "corpus_docs": 157091,
+  "gated_ranker": "bm25f_v1",
+  "margin": 0.05,
+  "n_queries": 10,
+  "rankers": {
+    "bm25_only": {
+      "mrr": 0.3257,
+      "ndcg": 0.1829,
+      "ndcg_ci95": [
+        0.0568,
+        0.3354
+      ],
+      "precision": 0.1
+    },
+    "bm25_v1": {
+      "mrr": 0.5865,
+      "ndcg": 0.3403,
+      "ndcg_ci95": [
+        0.1911,
+        0.5216
+      ],
+      "precision": 0.22
+    },
+    "bm25f_v1": {
+      "mrr": 0.6498,
+      "ndcg": 0.4237,
+      "ndcg_ci95": [
+        0.2805,
+        0.5948
+      ],
+      "precision": 0.26
+    },
+    "popularity_heavy": {
+      "mrr": 0.6254,
+      "ndcg": 0.5128,
+      "ndcg_ci95": [
+        0.385,
+        0.6616
+      ],
+      "precision": 0.32
+    }
+  }
+}

@@ -1,7 +1,8 @@
 """Hand-labeled relevance judgments (qrels) for offline ranking evaluation.
 
-Each entry pairs a query with graded relevance judgments over the seed corpus
-(seed_data.py, doc_id == repo id). Grades:
+Judgments are keyed on **repo full_name** (owner/name), not on a fragile internal
+id, so the same labels apply against the full crawled corpus: the graded repos sit
+among 157k real distractors and the ranker has to surface them. Grades:
 
     3 = ideal hit, exactly what the query is asking for
     2 = strongly relevant
@@ -10,8 +11,12 @@ Each entry pairs a query with graded relevance judgments over the seed corpus
 
 Graded (not binary) judgments are deliberate: they let nDCG reward a ranker for
 putting the *best* match first, which is the whole point of comparing variants.
-Judgments are over the 30-repo seed set so `evaluate` runs offline with no token.
-Doc-id comments name the repo so the labels stay auditable.
+
+Some labeled repos are not real GitHub repos (they were authored for the original
+seed demo: starters, tutorials, a renamed detectron). Those are marked in
+SYNTHETIC and injected into the corpus from the seed data so the labels still have
+a document to match; the rest are real repos, present in or injected into the
+crawl. See `app/eval/labels.py` for the resolve/inject logic.
 """
 from __future__ import annotations
 
@@ -21,69 +26,86 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class LabeledQuery:
     query: str
-    judgments: dict[int, int]  # doc_id -> grade
+    judgments: dict[str, int]  # full_name -> grade
 
 
 QRELS: list[LabeledQuery] = [
     LabeledQuery("distributed systems projects", {
-        2: 3,   # etcd
-        3: 3,   # kafka
-        18: 3,  # kubernetes
-        4: 3,   # tikv
-        20: 2,  # prometheus
-        22: 2,  # minio
-        5: 2,   # raft-rs
-        24: 2,  # distributed-systems-101
-        25: 1,  # celery
-        1: 1,   # redis
+        "etcd-io/etcd": 3,
+        "apache/kafka": 3,
+        "kubernetes/kubernetes": 3,
+        "tikv/tikv": 3,
+        "prometheus/prometheus": 2,
+        "minio/minio": 2,
+        "tikv/raft-rs": 2,
+        "tutorials/distributed-systems-101": 2,
+        "celery/celery": 1,
+        "redis/redis": 1,
     }),
     LabeledQuery("fastapi postgresql applications", {
-        9: 3,   # fastapi-postgres-starter
-        28: 3,  # fastapi-users
-        6: 2,   # fastapi
-        7: 2,   # django-rest-framework (rest + postgres)
-        8: 1,   # sqlalchemy
+        "fullstack-demo/fastapi-postgres-starter": 3,
+        "fastapi-users/fastapi-users": 3,
+        "tiangolo/fastapi": 2,
+        "encode/django-rest-framework": 2,
+        "sqlalchemy/sqlalchemy": 1,
     }),
     LabeledQuery("computer vision with deployment", {
-        12: 3,  # yolov5 (export / deployment)
-        13: 3,  # supervision (production CV)
-        29: 2,  # detectron2
-        11: 2,  # opencv
-        15: 1,  # transformers
-        30: 1,  # legacy-image-classifier
+        "ultralytics/yolov5": 3,
+        "roboflow/supervision": 3,
+        "detectron/detectron2": 2,
+        "opencv/opencv": 2,
+        "huggingface/transformers": 1,
+        "old-projects/legacy-image-classifier": 1,
     }),
     LabeledQuery("in memory key value store", {
-        1: 3,   # redis
-        26: 3,  # dragonfly
-        27: 3,  # valkey
-        2: 2,   # etcd
-        4: 2,   # tikv
+        "redis/redis": 3,
+        "dragonflydb/dragonfly": 3,
+        "valkey-io/valkey": 3,
+        "etcd-io/etcd": 2,
+        "tikv/tikv": 2,
     }),
     LabeledQuery("beginner friendly backend projects", {
-        24: 3,  # distributed-systems-101
-        9: 3,   # fastapi-postgres-starter
-        23: 2,  # build-your-own-redis
+        "tutorials/distributed-systems-101": 3,
+        "fullstack-demo/fastapi-postgres-starter": 3,
+        "learn-backend/build-your-own-redis": 2,
     }),
     LabeledQuery("monitoring and metrics", {
-        20: 3,  # prometheus
-        19: 3,  # grafana
+        "prometheus/prometheus": 3,
+        "grafana/grafana": 3,
     }),
     LabeledQuery("raft consensus algorithm", {
-        5: 3,   # raft-rs
-        2: 2,   # etcd
-        4: 2,   # tikv
-        24: 1,  # distributed-systems-101
+        "tikv/raft-rs": 3,
+        "etcd-io/etcd": 2,
+        "tikv/tikv": 2,
+        "tutorials/distributed-systems-101": 1,
     }),
     LabeledQuery("python web framework", {
-        6: 3,   # fastapi
-        7: 3,   # django-rest-framework
-        28: 1,  # fastapi-users
+        "tiangolo/fastapi": 3,
+        "encode/django-rest-framework": 3,
+        "fastapi-users/fastapi-users": 1,
     }),
     LabeledQuery("react frontend library", {
-        16: 3,  # react
-        17: 3,  # next.js
+        "facebook/react": 3,
+        "vercel/next.js": 3,
     }),
     LabeledQuery("object storage", {
-        22: 3,  # minio
+        "minio/minio": 3,
     }),
 ]
+
+# Labeled repos that are not real GitHub repositories (authored for the seed demo).
+# They are injected into the corpus from the seed data so the labels resolve.
+SYNTHETIC: set[str] = {
+    "fullstack-demo/fastapi-postgres-starter",
+    "tutorials/distributed-systems-101",
+    "learn-backend/build-your-own-redis",
+    "old-projects/legacy-image-classifier",
+    "detectron/detectron2",  # the real one is facebookresearch/detectron2
+}
+
+
+def labeled_full_names() -> set[str]:
+    names: set[str] = set()
+    for lq in QRELS:
+        names.update(lq.judgments)
+    return names

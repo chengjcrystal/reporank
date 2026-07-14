@@ -203,3 +203,62 @@ of the throughput curve. Three checks:
    (independent interpreters, so no shared GIL). Process scaling is sub-linear
    because of IPC and core limits, but the qualitative split (flat threads vs.
    scaling processes) is the direct fingerprint of a GIL-bound, CPU-bound service.
+
+## Step 4: Ranking evaluation as a CI gate
+
+The eval scores each ranker against a **frozen snapshot of the full 157k-repo
+index** (`eval_index.pkl`, built by `python -m app.cli freeze-eval`) with all 27
+labeled repos embedded, so the ranker has to surface the labels past ~157k real
+distractors. Judgments are keyed on repo full_name (`app/eval/qrels.py`); the
+freeze resolves them to doc_ids and writes `frozen_qrels.json` and `baseline.json`
+so the gate is reproducible and independent of the live DB.
+
+**Labels (27 across 10 queries) are guaranteed present in the corpus:**
+22 are real repos (already crawled, or live-fetched from the GitHub API for ones
+whose language was outside the crawl, e.g. `redis/redis` and `valkey-io/valkey`
+are C), and 5 are synthetic seed repos (tutorials / starters that were never real
+GitHub repos) injected from the seed data. Two real repos (`facebook/react`,
+`tiangolo/fastapi`) needed a redirect followed because GitHub 301s transferred
+repos; their real stats are kept and identity pinned to the label.
+
+**Results on the full corpus (nDCG@10, bootstrap 95% CI over the 10 queries):**
+
+| ranker | nDCG@10 | 95% CI | MRR | P@5 |
+|---|---:|:--:|---:|---:|
+| popularity_heavy | 0.513 | [0.385, 0.662] | 0.625 | 0.320 |
+| bm25f_v1 | 0.424 | [0.281, 0.595] | 0.650 | 0.260 |
+| bm25_v1 | 0.340 | [0.191, 0.522] | 0.587 | 0.220 |
+| bm25_only | 0.183 | [0.057, 0.335] | 0.326 | 0.100 |
+
+### What this shows (and why it matters more than the old numbers)
+
+- **At scale the ranking story inverts.** On the old 30-doc corpus every ranker
+  scored ~0.95-0.98 and pure BM25 nominally "won"; the corpus was too small for
+  the number to mean anything. Against 157k distractors, pure BM25 **collapses to
+  0.183**: for a query like `react frontend library` the canonical `facebook/react`
+  is only rank 2 under pure lexical scoring (a shorter exact-match repo beats it),
+  and the second labeled repo falls out of the top 10 entirely. Popularity
+  blending pulls `facebook/react` to rank 1 and lifts nDCG to 0.513. This is the
+  measured case for the blended ranker, which the toy corpus could not make.
+- **The blend that wins is popularity-heavy here**, with field-weighted BM25F
+  second. Which ranker to actually ship is a product call (popularity-heavy can
+  over-favor stars on other traffic), but the eval now gives real signal to make
+  it on.
+
+### The gate, and why it is built the way it is
+
+`python -m app.cli eval-gate` (and `tests/test_gate.py`) fail the build if the
+shipped ranker's nDCG@10 falls more than **0.05** below the committed baseline.
+
+- **Gate on the point estimate, not the CI.** The bootstrap 95% CIs above are wide
+  (e.g. bm25f_v1 spans [0.281, 0.595]) because n=10 is small. Gating on a CI bound
+  would flap on noise. So the gate uses the point estimate with a fixed margin, and
+  the n=10 coarseness is stated rather than hidden. The CIs are still reported so
+  the noise is visible.
+- **Reproducible, but the snapshot is not committed.** The frozen index is 51 MB
+  and gitignored. `frozen_qrels.json` and `baseline.json` are committed, so the
+  baseline is reviewable, but the gate test **skips** where `eval_index.pkl` has
+  not been materialized (a fresh clone or a stock cloud runner) and enforces
+  wherever it has (local pre-push, or a runner that restores the snapshot). This is
+  an honest limitation: cloud CI runs the code tests on every push; the ranking
+  gate runs against the materialized snapshot.
