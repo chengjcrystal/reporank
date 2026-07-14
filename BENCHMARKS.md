@@ -114,10 +114,16 @@ what the step 3 latency harness and result cache target.
 ## Step 3: Latency under load + result cache
 
 Load-tested the engine over the full 157k-repo index with `scripts/bench_latency.py`.
-Workload: 400 distinct 1-3 term queries, Zipf-sampled so a head recurs like real
-traffic; closed-loop (C worker threads issuing back-to-back for 5s per level).
-Search scoring is CPU-bound Python, so this mirrors one uvicorn worker under the
-GIL: raising concurrency exposes queueing, not extra throughput.
+Closed-loop: C worker threads issue queries back-to-back for 5s per level.
+
+**Workload (this determines the hit-rate, so it is stated in full).** A fixed pool
+of **400 distinct** queries, each a 1-3 term combination drawn from a 30-term
+vocabulary, generated once with a fixed seed. During the run each worker samples
+the pool with a **Zipf (1/rank) weighting**, so a small head of queries recurs
+often and a long tail is comparatively cold, which is the shape real search
+traffic takes. The cache is an **LRU with capacity 256**, deliberately smaller
+than the 400-query working set so eviction actually happens (the tail evicts
+itself; the head stays resident).
 
 **Cache OFF** (`cache_size=0`):
 
@@ -130,7 +136,11 @@ GIL: raising concurrency exposes queueing, not extra throughput.
 | 16 | 91 | 102.6 | 493.6 | 642.2 |
 | 32 | 100 | 96.9 | 614.1 | 1120.2 |
 
-**Cache ON** (LRU, capacity 256, measured hit-rate **94.3%**):
+**Cache ON** (LRU, capacity 256, measured hit-rate **94.3%** on the Zipfian
+workload above). The 94.3% is a property of that query distribution, not of the
+system: a uniform-random or higher-cardinality stream would hit far less, and a
+stream with no repeats would hit ~0%. The number is meaningful only next to the
+workload that produced it.
 
 | concurrency | QPS | p50 ms | p95 ms | p99 ms |
 |---:|---:|---:|---:|---:|
@@ -161,3 +171,35 @@ GIL: raising concurrency exposes queueing, not extra throughput.
   the single-process GIL. The next lever is multi-process workers (each with its
   own in-memory index) or moving the inner scoring loop out of pure Python, not a
   bigger cache.
+
+### Profiling: is it really the GIL? (not inferred from the curve)
+
+The "GIL-bound" claim is backed by `scripts/profile_search.py`, not by the shape
+of the throughput curve. Three checks:
+
+1. **The search path does no I/O.** An audit of `engine.py` finds no DB session,
+   socket, or file access; the harness drives `SearchEngine.search` directly, with
+   no FastAPI and no SQLAlchemy session. So SQLite write serialization cannot be
+   in the measured path (DB hydration and the search-log INSERT happen in the API
+   layer, which this benchmark does not exercise). The reload lock is likewise not
+   in the path: no reload runs during a load level, and the swap is off to the
+   side (see `app/api/state.py`).
+2. **cProfile puts the time in pure-Python scoring.** Over 300 cold-miss searches,
+   cumulative time is dominated by `search` (the candidate loop), `score_terms`,
+   `_passes_filters` (~2M calls), `_recency_decay`, list `sort`, and `_normalize`,
+   plus `sum` / `max` / `math.log` builtins. No lock-acquire and no I/O frames
+   appear.
+3. **The same work parallelizes across processes but not threads.** Identical
+   CPU-bound query batch, pools warmed so spawn / index-load is excluded from the
+   timing:
+
+   | workers | threads | processes |
+   |---:|---:|---:|
+   | 1 (baseline) | 75 qps | 75 qps |
+   | 2 | 76 qps (1.01x) | 120 qps (1.59x) |
+   | 4 | 75 qps (0.99x) | 145 qps (1.93x) |
+
+   Threads add zero throughput (the GIL serializes them); processes scale
+   (independent interpreters, so no shared GIL). Process scaling is sub-linear
+   because of IPC and core limits, but the qualitative split (flat threads vs.
+   scaling processes) is the direct fingerprint of a GIL-bound, CPU-bound service.
