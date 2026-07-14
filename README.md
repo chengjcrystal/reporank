@@ -1,9 +1,11 @@
-# RepoRank — GitHub Repository Search Engine
+# RepoRank: GitHub Repository Search Engine
 
 A search engine for GitHub repositories with a **custom inverted index** and
-**BM25 ranking implemented from scratch** (no Elasticsearch / Algolia), plus a
-quality-aware blended ranker that combines text relevance with popularity and
-recency to surface better projects than GitHub's default search.
+**BM25 / BM25F ranking implemented from scratch** (no Elasticsearch / Algolia),
+plus a quality-aware blended ranker (text relevance + popularity + recency). The
+ranker variants are compared head-to-head on a hand-labeled relevance set with
+nDCG / MRR / P@k; the project measures which ranking wins rather than claiming to
+beat any particular baseline.
 
 ```
 distributed systems projects   ·   FastAPI PostgreSQL applications
@@ -13,19 +15,19 @@ computer vision with deployment ·   projects similar to Redis
 ## Architecture
 
 ```
-GitHub API ──▶ Crawler ──▶ PostgreSQL (source of truth) ──▶ Indexer ──▶ snapshot.pkl
- (rate-limit,   (resumable    repositories / topics /         (tokenize,    (in-memory
-  star-slice)    crawl_state)  search_logs)                    inverted      inverted
-                                                               index)        index)
-                                                                                │
-                            React-ish SPA  ◀──  FastAPI  ◀── BM25 + filters + blended re-rank
+GitHub API ──▶ Crawler ──▶ SQLite by default ──▶ Indexer ──▶ snapshot.pkl
+ (rate-limit,   (resumable   (Postgres optional)  (tokenize,    (in-memory
+  star-slice)    crawl_state)  repos / topics /    inverted      inverted
+                              search_logs)         index)        index)
+                                                                    │
+                     vanilla-JS SPA  ◀──  FastAPI  ◀── BM25F + filters + blended re-rank
 ```
 
 The **ingestion** path (offline batch) is cleanly separated from the **serving**
 path (online, in-memory, low-latency). The search index is a *derived artifact*:
-it can always be rebuilt from Postgres.
+it can always be rebuilt from the database.
 
-## Quickstart (zero setup — uses SQLite + seed data)
+## Quickstart (zero setup, uses SQLite + seed data)
 
 ```bash
 cd reporank
@@ -74,11 +76,11 @@ pip install "psycopg[binary]"
 
 ## Search internals
 
-- **Tokenizer** (`app/search/tokenizer.py`) — lowercase, tech-aware (keeps `c++`,
+- **Tokenizer** (`app/search/tokenizer.py`): lowercase, tech-aware (keeps `c++`,
   `node.js`), curated stopwords, identical for indexing and querying.
-- **Inverted index** (`app/search/index.py`) — `term → [(doc_id, tf)]`, doc
+- **Inverted index** (`app/search/index.py`): `term → [(doc_id, tf)]`, doc
   lengths, corpus stats; persisted as a snapshot, loaded into RAM.
-- **BM25** (`app/search/bm25.py`) — term-at-a-time scoring, from scratch.
+- **BM25** (`app/search/bm25.py`): term-at-a-time scoring, from scratch.
 - **BM25F** (`app/search/bm25f.py`): field-weighted BM25 from scratch (name >
   description/topics > readme), reducing to plain BM25 on a single field.
 - **Blended ranker** (`app/search/engine.py`):
