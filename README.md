@@ -28,14 +28,17 @@ it can always be rebuilt from Postgres.
 ## Quickstart (zero setup — uses SQLite + seed data)
 
 ```bash
-cd github-search
+cd reporank
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-python -m app.cli seed          # load a curated demo dataset
+python -m app.cli seed          # load the 30-repo offline demo set
 python -m app.cli build-index   # build + persist the inverted index
 uvicorn app.main:app --reload   # open http://localhost:8000
 ```
+
+The seed set is a 30-repo demo so the app runs with no token. The real corpus
+(157k repos) comes from the crawler below.
 
 Then open **http://localhost:8000** and try `distributed systems projects` or
 `FastAPI PostgreSQL`. API docs are auto-generated at **/docs**.
@@ -76,9 +79,14 @@ pip install "psycopg[binary]"
 - **Inverted index** (`app/search/index.py`) — `term → [(doc_id, tf)]`, doc
   lengths, corpus stats; persisted as a snapshot, loaded into RAM.
 - **BM25** (`app/search/bm25.py`) — term-at-a-time scoring, from scratch.
-- **Blended ranker** (`app/search/engine.py`) —
+- **BM25F** (`app/search/bm25f.py`): field-weighted BM25 from scratch (name >
+  description/topics > readme), reducing to plain BM25 on a single field.
+- **Blended ranker** (`app/search/engine.py`):
   `final = w_text·bm25 + w_pop·log(stars) + w_fresh·recency`, selectable via the
-  `ranker` query param for A/B experiments (`bm25_only`, `bm25_v1`, `popularity_heavy`).
+  `ranker` query param for A/B experiments. Variants: `bm25f_v1` (shipped default,
+  field-weighted), `bm25_v1` (flat), `bm25_only`, `popularity_heavy`.
+- **Result cache** (`app/search/cache.py`): in-process LRU over
+  (query, filters, ranker, page), on by default via `cache_size`.
 
 ## Scale
 
@@ -141,11 +149,30 @@ bm25f_v1 is content-driven and is the field-weighting the project exists to
 demonstrate, so it ships; popularity_heavy stays as a documented comparison.
 
 **The gate** (`app/eval/gate.py`) fails the build if the shipped ranker's nDCG@10
-drops more than `MARGIN` (0.05) below a committed baseline. Confidence intervals
-are reported via bootstrap over the queries but are **not** gated on: at n=10 the
-CI is wide (see the table) and would flap, so the gate uses the point estimate
-with a stated margin and the coarseness is documented, not hidden. Full method and
-per-query detail are in [BENCHMARKS.md](BENCHMARKS.md).
+drops more than `MARGIN` (0.05) below a committed baseline, scored in CI against
+the frozen index (downloaded from a release asset). Full method and per-query
+detail are in [BENCHMARKS.md](BENCHMARKS.md).
+
+### Known limitations of the eval (stated, not smoothed over)
+
+This judgment set is small, and the numbers should be read with two caveats:
+
+- **n=10 queries: the top two rankers are statistically indistinguishable.** The
+  bootstrap 95% CIs overlap heavily (popularity_heavy [0.385, 0.662] vs bm25f_v1
+  [0.281, 0.595]), so their 0.09 point-estimate gap is not a real ranking. This is
+  exactly why the gate is on the point estimate with a fixed margin rather than on
+  a CI bound, which at this n would flap on noise.
+- **Shallow pools bias the absolute numbers down.** Only ~27 repos across the 10
+  queries are judged, so most of each ranker's top-10 is unjudged and scored as
+  non-relevant. That depresses every nDCG@10 and can bias the between-ranker
+  comparison (a ranker surfacing genuinely relevant but unjudged repos is punished
+  for it). The scores are useful for regression detection and relative comparison,
+  not as absolute relevance.
+
+The **highest-leverage next eval step is pooling**: take the union of each ranker's
+top-k per query, judge that pool, and re-score. That removes the unjudged-as-
+non-relevant bias far more cheaply than blindly writing more queries, so it comes
+before any query-set expansion.
 
 ## API
 
@@ -165,13 +192,19 @@ per-query detail are in [BENCHMARKS.md](BENCHMARKS.md).
 pytest -q
 ```
 
-BM25 is validated against an independent reference implementation on a hand-built
-corpus; the tokenizer, engine (filters, blended ranking), ranking metrics, and
-evaluation harness have unit tests too (31 in total).
+BM25 and BM25F are validated against independent / hand-computed reference values;
+the tokenizer, engine (filters, blended ranking, cache), ranking metrics, crawler
+retry logic, and the eval gate have unit tests too (49 in total). CI runs the full
+suite on every push, including the ranking-regression gate against the frozen
+index.
 
 ## Roadmap
 
-- Semantic search via embeddings + pgvector (hybrid BM25 + cosine)
-- BM25F field weighting (name ≫ description ≫ README)
-- Typo tolerance (trigram / edit distance)
-- Redis result cache
+- **Pooling for the eval** (union each ranker's top-k, judge, re-score): the
+  highest-leverage next step, removes the shallow-pool bias above before expanding
+  the query set.
+- Multi-process serving workers to lift the single-process GIL ceiling on
+  throughput (see the latency section).
+- Semantic search via embeddings + pgvector (hybrid BM25 + cosine).
+- Typo tolerance (trigram / edit distance).
+- Shared / cross-process result cache (the current cache is in-process LRU).

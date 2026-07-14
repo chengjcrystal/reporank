@@ -267,10 +267,31 @@ shipped ranker's nDCG@10 falls more than **0.05** below the committed baseline.
   would flap on noise. So the gate uses the point estimate with a fixed margin, and
   the n=10 coarseness is stated rather than hidden. The CIs are still reported so
   the noise is visible.
-- **Reproducible, but the snapshot is not committed.** The frozen index is 51 MB
-  and gitignored. `frozen_qrels.json` and `baseline.json` are committed, so the
-  baseline is reviewable, but the gate test **skips** where `eval_index.pkl` has
-  not been materialized (a fresh clone or a stock cloud runner) and enforces
-  wherever it has (local pre-push, or a runner that restores the snapshot). This is
-  an honest limitation: cloud CI runs the code tests on every push; the ranking
-  gate runs against the materialized snapshot.
+- **Reproducible, and enforced in cloud CI.** The frozen index is 51 MB and
+  gitignored, so it ships as a GitHub release asset (`eval-index-v1`). The CI
+  workflow downloads that exact file before running the suite, so the gate enforces
+  in GitHub Actions against the identical snapshot the baseline was computed on
+  (`frozen_qrels.json` and `baseline.json` are committed for review). The gate
+  test skips-green only if the asset is ever unavailable, so CI never breaks on a
+  missing artifact.
+
+### Two limitations of this eval, stated plainly
+
+Neither is smoothed over; both are real and bound how far these numbers should be
+pushed.
+
+- **n=10 queries: the top two rankers are statistically indistinguishable.** The
+  bootstrap 95% CIs overlap heavily (popularity_heavy [0.385, 0.662] vs bm25f_v1
+  [0.281, 0.595]). The 0.09 point-estimate gap is within noise, which is precisely
+  why the gate is on the point estimate with a margin and not on a CI bound.
+- **Shallow pools depress and can bias the scores.** Only ~27 repos across the 10
+  queries are judged, so most of each ranker's top-10 is unjudged and counted as
+  non-relevant by nDCG@10. That drags every score down in absolute terms and can
+  bias the between-ranker comparison, since a ranker that surfaces genuinely
+  relevant but unjudged repos is penalized for it. These numbers are sound for
+  regression detection and relative comparison, not as absolute relevance.
+
+The **highest-leverage next eval step is pooling**, not more queries: take the
+union of each ranker's top-k per query, judge that pool, and re-score. That
+directly removes the unjudged-as-non-relevant bias, and it is far cheaper than
+expanding the query set, so it comes first.
