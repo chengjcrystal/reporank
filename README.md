@@ -230,3 +230,7 @@ index.
 - Semantic search via embeddings + pgvector (hybrid BM25 + cosine).
 - Typo tolerance (trigram / edit distance).
 - Shared / cross-process result cache (the current cache is in-process LRU).
+
+## License
+
+MIT, see [LICENSE](LICENSE).
