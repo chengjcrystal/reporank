@@ -3,7 +3,7 @@
 These operate on a *ranked list of doc_ids* plus a *relevance map* (qrels):
 doc_id -> graded relevance (0 = irrelevant, higher = more relevant). Graded
 relevance is what lets nDCG reward putting the *best* result first, not just a
-relevant one — the distinction that matters when comparing ranker variants.
+relevant one, the distinction that matters when comparing ranker variants.
 
 All functions are pure and take the ranking + qrels explicitly so they're
 trivially unit-testable against hand-computed values.

@@ -8,7 +8,7 @@ than GitHub default search" is a blended score:
           + w_fresh* recency_decay(pushed_at)
 
 Weights are selected by `ranker` variant so we can A/B test them and report
-relevance lift (nDCG / CTR) — a first-class ranking-experiment story.
+relevance lift (nDCG / CTR): a first-class ranking-experiment story.
 """
 from __future__ import annotations
 

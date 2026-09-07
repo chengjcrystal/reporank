@@ -21,7 +21,7 @@ IDF is identical to plain BM25 (document frequency = docs containing q in ANY
 field), so rare terms still dominate.
 
 Note the length normalization lives *inside* each field here, which is why the
-outer saturation has no separate ``b`` term — that job is already done per field.
+outer saturation has no separate ``b`` term: that job is already done per field.
 
 Degenerate case worth knowing: with a single field and boost 1.0 this reduces
 *exactly* to plain BM25 (see tests), so BM25F is a strict generalization, not a

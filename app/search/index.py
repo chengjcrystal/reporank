@@ -12,7 +12,7 @@ README match. Plain BM25 still works: it just sums the per-field frequencies to
 recover the whole-document term frequency, so the field split is invisible to it.
 
 Callers that don't care about fields can still call
-``add_document(doc_id, text, meta)`` — the text becomes a single default field
+``add_document(doc_id, text, meta)``: the text becomes a single default field
 and BM25F degenerates to plain BM25.
 
 Structures
@@ -61,7 +61,7 @@ class InvertedIndex:
     fields: list[str] = field(default_factory=list)
     N: int = 0
     avg_field_len: tuple[float, ...] = ()
-    # Derived (computed in finalize / load) — kept for plain BM25 and stats.
+    # Derived (computed in finalize / load), kept for plain BM25 and stats.
     doc_len: dict[int, int] = field(default_factory=dict)
     avg_doc_len: float = 0.0
 

@@ -12,7 +12,7 @@ relevance + popularity + recency), and a ranking-regression gate that scores
 nDCG / MRR / P@5 against a frozen **157,083-repo** index in CI.
 
 > **157k** repos crawled · index loads in **0.6 s** · **~100 QPS** single-process,
-> **15-20x** with the cache · **49 tests** + a ranking gate running in CI
+> **15-20x** with the cache · **54 tests** + a ranking gate running in CI
 
 ```
 distributed systems projects   ·   FastAPI PostgreSQL applications
@@ -104,6 +104,12 @@ pip install "psycopg[binary]"
   field-weighted), `bm25_v1` (flat), `bm25_only`, `popularity_heavy`.
 - **Result cache** (`app/search/cache.py`): in-process LRU over
   (query, filters, ranker, page), on by default via `cache_size`.
+- **Query expansion** (`app/search/query_expand.py`, optional): `?expand=true`
+  asks Claude Haiku for a few related search terms (e.g. `in-memory cache` →
+  `valkey memcached kv-store`) before scoring, to catch relevant repos that
+  don't share the query's exact vocabulary. Off by default, requires
+  `ANTHROPIC_API_KEY`, and fails soft to the plain query on any error, it never
+  touches the BM25/BM25F core or the eval-gated ranker.
 
 ## Scale
 
@@ -200,7 +206,7 @@ before any query-set expansion.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/search` | ranked search w/ filters (language, min_stars, topics, updated_after), pagination, latency |
+| `GET /api/search` | ranked search w/ filters (language, min_stars, topics, updated_after), pagination, latency, optional LLM query expansion (`expand=true`) |
 | `GET /api/repos/{id}` | repository detail |
 | `GET /api/repos/{id}/similar` | content similarity (topic Jaccard) |
 | `GET /api/suggest` | autocomplete |
@@ -216,7 +222,7 @@ pytest -q
 
 BM25 and BM25F are validated against independent / hand-computed reference values;
 the tokenizer, engine (filters, blended ranking, cache), ranking metrics, crawler
-retry logic, and the eval gate have unit tests too (49 in total). CI runs the full
+retry logic, and the eval gate have unit tests too (54 in total). CI runs the full
 suite on every push, including the ranking-regression gate against the frozen
 index.
 

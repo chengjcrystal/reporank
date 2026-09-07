@@ -1,4 +1,4 @@
-"""Pydantic response models — typed API contracts (and free OpenAPI docs)."""
+"""Pydantic response models: typed API contracts (and free OpenAPI docs)."""
 from __future__ import annotations
 
 from datetime import datetime

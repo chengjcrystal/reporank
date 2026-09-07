@@ -1,4 +1,4 @@
-# Project Context — RepoRank (GitHub Repository Search Engine)
+# Project Context: RepoRank (GitHub Repository Search Engine)
 
 > Paste/upload this file into a Claude.ai Project or new chat to bring Claude
 > fully up to speed on what this project is and what has been built so far.
@@ -9,7 +9,7 @@ A portfolio project for SWE internship applications (Berkeley EECS student).
 A **GitHub repository search engine** that ranks results better than GitHub's
 default search. The point is to demonstrate backend engineering, database
 design, information retrieval, a custom inverted index, BM25 ranking from
-scratch, ranking experiments, and clean system design — WITHOUT relying on
+scratch, ranking experiments, and clean system design, WITHOUT relying on
 Elasticsearch / Algolia / managed search.
 
 Example queries it handles: "distributed systems projects",
@@ -22,7 +22,7 @@ Example queries it handles: "distributed systems projects",
   The inverted index can always be rebuilt from the DB. This clean separation of
   the offline ingestion path from the online serving path is the core system-
   design idea.
-- **Build the IR core by hand, but use Postgres for storage** — demonstrates both
+- **Build the IR core by hand, but use Postgres for storage**: demonstrates both
   understanding of search internals and pragmatic infra choices.
 - **In-memory inverted index** loaded from a disk snapshot at API startup. At the
   real corpus scale (157,083 repos, a 51 MB snapshot that loads in 0.6 s) it fits
@@ -31,7 +31,7 @@ Example queries it handles: "distributed systems projects",
   final score blends text relevance + popularity + recency:
   `final = w_text·norm(bm25) + w_pop·norm(log(stars+1)) + w_fresh·recency_decay`.
   Weights are chosen by a `ranker` query param so ranking variants can be A/B'd.
-- **No stemming in v1** — it mangles tech terms ("redis" → "redi"). Planned as a
+- **No stemming in v1**: it mangles tech terms ("redis" → "redi"). Planned as a
   measurable experiment behind a flag.
 
 ## Tech stack
@@ -64,6 +64,7 @@ reporank/
       cache.py                # thread-safe LRU result cache
       engine.py               # filters + blended ranking + cache; ranker variants
       builder.py              # builds the index from the DB
+      query_expand.py         # optional LLM query expansion (Claude Haiku), fails soft
     eval/
       qrels.py                # hand-labeled judgments, keyed on full_name
       metrics.py              # nDCG / MRR / P@k from scratch
@@ -75,7 +76,7 @@ reporank/
       state.py                # in-memory engine holder, atomic snapshot reload
   scripts/                    # crawl_multi.py, bench_index.py, bench_latency.py, profile_search.py
   web/                        # index.html, app.js, styles.css (dark GitHub-style SPA)
-  tests/                      # 49 tests across tokenizer/bm25/bm25f/engine/cache/eval/gate/crawler
+  tests/                      # 54 tests across tokenizer/bm25/bm25f/engine/cache/eval/gate/crawler/query_expand
   .github/workflows/ci.yml    # runs tests + the ranking gate against the frozen index
   BENCHMARKS.md               # measured numbers per milestone (crawl, scale, latency, eval)
   requirements.txt  docker-compose.yml  README.md  .env.example
@@ -109,8 +110,12 @@ reporank/
   ranker must surface them past ~157k distractors. nDCG / MRR / P@k from scratch,
   bootstrap CIs, and a point-estimate gate that fails the build on regression
   (step 4).
-- 49 passing tests; BM25 / BM25F and the ranking metrics each validated against
+- 54 passing tests; BM25 / BM25F and the ranking metrics each validated against
   independent / hand-computed reference values.
+- Optional LLM query expansion (`app/search/query_expand.py`, Claude Haiku via
+  `?expand=true`): widens the query with a few related terms before scoring.
+  Off by default, fails soft to the plain query on any error, never touches the
+  BM25/BM25F core or the eval-gated ranker.
 
 Evaluation results (10 labeled queries, full 157k frozen index, fixed clock):
 

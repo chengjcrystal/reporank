@@ -189,7 +189,7 @@ def filters(db: Session = Depends(get_session)):
 
 @router.post("/events/click")
 def click(event: ClickEvent, db: Session = Depends(get_session)):
-    """Record a result click — powers CTR for ranking evaluation."""
+    """Record a result click. Powers CTR for ranking evaluation."""
     db.add(SearchLog(
         query=event.query, ranker_variant=event.ranker,
         clicked_repo=event.repo_id, result_count=0, latency_ms=0,
