@@ -28,6 +28,7 @@ class SearchResponse(BaseModel):
     latency_ms: float
     ranker: str
     results: list[RepoResult]
+    expanded_terms: list[str] = []  # extra terms added by LLM query expansion, if requested
 
 
 class SuggestResponse(BaseModel):

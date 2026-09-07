@@ -15,6 +15,7 @@ from app.schemas import (
     ClickEvent, FiltersResponse, RepoResult, SearchResponse, SuggestResponse,
 )
 from app.search.engine import DEFAULT_RANKER, Filters, RANKERS
+from app.search.query_expand import expand_query
 
 router = APIRouter(prefix="/api")
 
@@ -45,11 +46,15 @@ def search(
     ranker: str = DEFAULT_RANKER,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
+    expand: bool = Query(False, description="Widen the query with LLM-suggested related terms (Anthropic Haiku)"),
     db: Session = Depends(get_session),
 ):
     engine = state.require()
     if ranker not in RANKERS:
         ranker = DEFAULT_RANKER
+
+    expanded_terms = expand_query(q) if expand else []
+    search_query = f"{q} {' '.join(expanded_terms)}".strip() if expanded_terms else q
 
     updated_ts = None
     if updated_after:
@@ -66,7 +71,7 @@ def search(
     )
 
     start = time.perf_counter()
-    hits, total = engine.search(q, filters=filters, ranker=ranker,
+    hits, total = engine.search(search_query, filters=filters, ranker=ranker,
                                 page=page, per_page=per_page)
     latency_ms = (time.perf_counter() - start) * 1000
 
@@ -85,6 +90,7 @@ def search(
     return SearchResponse(
         query=q, total=total, page=page, per_page=per_page,
         latency_ms=round(latency_ms, 2), ranker=ranker, results=results,
+        expanded_terms=expanded_terms,
     )
 
 
