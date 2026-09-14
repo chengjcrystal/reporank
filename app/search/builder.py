@@ -10,12 +10,19 @@ from app.models import Repository
 from app.search.index import DocMeta, InvertedIndex
 
 
-def build_index(db: Session) -> tuple[InvertedIndex, dict]:
-    """Build the full index. Returns (index, build_stats)."""
+def build_index(db: Session, limit: int | None = None) -> tuple[InvertedIndex, dict]:
+    """Build the index. Returns (index, build_stats).
+
+    `limit`, when given, keeps only the top-N repos by stars, for hosting on a
+    memory-constrained deploy target rather than the full corpus.
+    """
     start = time.time()
     index = InvertedIndex()
 
-    repos = db.scalars(select(Repository)).all()
+    stmt = select(Repository)
+    if limit is not None:
+        stmt = stmt.order_by(Repository.stars.desc()).limit(limit)
+    repos = db.scalars(stmt).all()
     for repo in repos:
         meta = DocMeta(
             stars=repo.stars or 0,

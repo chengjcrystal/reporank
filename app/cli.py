@@ -47,10 +47,10 @@ def cmd_crawl(args) -> None:
         db.close()
 
 
-def cmd_build_index(_args) -> None:
+def cmd_build_index(args) -> None:
     db = SessionLocal()
     try:
-        index, stats = build_index(db)
+        index, stats = build_index(db, limit=args.limit)
         index.save(settings.index_path)
     finally:
         db.close()
@@ -129,7 +129,12 @@ def main() -> None:
     p_crawl.add_argument("--star-step", type=int, default=50)
     p_crawl.set_defaults(func=cmd_crawl)
 
-    sub.add_parser("build-index").set_defaults(func=cmd_build_index)
+    p_build_index = sub.add_parser("build-index")
+    p_build_index.add_argument(
+        "--limit", type=int, default=None,
+        help="Only index the top N repos by stars (for memory-constrained deploys)",
+    )
+    p_build_index.set_defaults(func=cmd_build_index)
     sub.add_parser("stats").set_defaults(func=cmd_stats)
     sub.add_parser("evaluate").set_defaults(func=cmd_evaluate)
     sub.add_parser("freeze-eval").set_defaults(func=cmd_freeze_eval)

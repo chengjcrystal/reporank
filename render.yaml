@@ -12,6 +12,9 @@ services:
       - key: INDEX_PATH
         value: /app/index_snapshot.pkl
       - key: INDEX_SNAPSHOT_URL
-        value: https://github.com/chengjcrystal/reporank/releases/download/index-snapshot-v1/index_snapshot.pkl
+        # Trimmed to the top 50k repos by stars: Render's free-tier 512MB cap
+        # can't hold the full 157k index (measured ~605MB resident vs ~256MB
+        # for this subset). Rebuild with: python -m app.cli build-index --limit 50000
+        value: https://github.com/chengjcrystal/reporank/releases/download/index-snapshot-prod-v1/index_snapshot.prod.pkl
       - key: DATABASE_URL
         sync: false
