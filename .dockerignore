@@ -1,0 +1,11 @@
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.git
+.env
+*.db
+*.pkl
+node_modules
+.DS_Store
