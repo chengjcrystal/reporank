@@ -1,0 +1,17 @@
+# Render Blueprint: New + -> Blueprint -> select this repo, Render reads this file.
+# DATABASE_URL is left unset here (sync: false) so it's entered as a secret in
+# the Render dashboard instead of committed to git.
+services:
+  - type: web
+    name: reporank
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: INDEX_PATH
+        value: /app/index_snapshot.pkl
+      - key: INDEX_SNAPSHOT_URL
+        value: https://github.com/chengjcrystal/reporank/releases/download/index-snapshot-v1/index_snapshot.pkl
+      - key: DATABASE_URL
+        sync: false
