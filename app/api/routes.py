@@ -4,12 +4,13 @@ from __future__ import annotations
 import time
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.state import state
 from app.db import get_session
+from app.limiter import limiter
 from app.models import Repository, SearchLog, Topic
 from app.schemas import (
     ClickEvent, FiltersResponse, RepoResult, SearchResponse, SuggestResponse,
@@ -37,7 +38,9 @@ def _to_result(repo: Repository, score: float, bm25: float) -> RepoResult:
 
 
 @router.get("/search", response_model=SearchResponse)
+@limiter.limit("30/minute")
 def search(
+    request: Request,
     q: str = Query("", description="Search query"),
     language: str | None = None,
     min_stars: int | None = None,
@@ -188,7 +191,8 @@ def filters(db: Session = Depends(get_session)):
 
 
 @router.post("/events/click")
-def click(event: ClickEvent, db: Session = Depends(get_session)):
+@limiter.limit("60/minute")
+def click(request: Request, event: ClickEvent, db: Session = Depends(get_session)):
     """Record a result click. Powers CTR for ranking evaluation."""
     db.add(SearchLog(
         query=event.query, ranker_variant=event.ranker,
