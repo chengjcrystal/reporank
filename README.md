@@ -11,6 +11,12 @@ scratch** (no Elasticsearch / Algolia), a quality-aware blended ranker (text
 relevance + popularity + recency), and a ranking-regression gate that scores
 nDCG / MRR / P@5 against a frozen **157,083-repo** index in CI.
 
+[Live Demo](https://reporank-jgoo.onrender.com) (free tier caps memory at
+512MB, so the public demo serves the top 50k repos by stars instead of the
+full 157k corpus, and sleeps after 15 min idle, so the first hit can take
+30-50s to wake). The crawl, benchmarks, and CI eval gate below all run on the
+full 157k index; only the live demo is trimmed.
+
 > **157k** repos crawled · index loads in **0.6 s** · **~100 QPS** single-process,
 > **15-20x** with the cache · **54 tests** + a ranking gate running in CI
 
