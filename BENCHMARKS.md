@@ -48,7 +48,7 @@ Per-language (from the DB, `primary_language`):
   run that path recovered 3 transient errors live, so the corpus completed without
   manual intervention.
 
-### Honest caveats
+### Caveats
 
 - **The 1000-results-per-query cap truncates the densest low-star slices.** Each
   25-star slice returns at most 1000 repos (GitHub's hard limit), so in very dense
@@ -122,7 +122,7 @@ vocabulary, generated once with a fixed seed. During the run each worker samples
 the pool with a **Zipf (1/rank) weighting**, so a small head of queries recurs
 often and a long tail is comparatively cold, which is the shape real search
 traffic takes. The cache is an **LRU with capacity 256**, deliberately smaller
-than the 400-query working set so eviction actually happens (the tail evicts
+than the 400-query working set so eviction happens (the tail evicts
 itself; the head stays resident).
 
 **Cache OFF** (`cache_size=0`):
@@ -166,7 +166,7 @@ workload that produced it.
   at C=32: the 5.7% cold misses are still GIL-bound, and piling on threads adds
   lock and scheduler contention around those misses. The miss tail is why p99
   climbs back to 360-614 ms at high concurrency even with the cache on.
-- **Honest takeaway.** The cache is the right first move (it removes the head of
+- **Takeaway.** The cache is the right first move (it removes the head of
   the traffic from the hot path for almost nothing), but the ceiling past it is
   the single-process GIL. The next lever is multi-process workers (each with its
   own in-memory index) or moving the inner scoring loop out of pure Python, not a
@@ -245,7 +245,7 @@ repos; their real stats are kept and identity pinned to the label.
   bm25f_v1's (0.424), but at n=10 the bootstrap CIs overlap heavily
   ([0.385, 0.662] vs [0.281, 0.595]), so the difference is not distinguishable from
   noise: it is a tie, not a lead. The tie breaks on robustness, not on the point
-  estimate. Per query, popularity_heavy is actually **worse than bm25f_v1 on 5 of
+  estimate. Per query, popularity_heavy is **worse than bm25f_v1 on 5 of
   the 10 queries**; its aggregate comes entirely from head queries where the
   relevant repos happen to be the most-starred (in memory key value store: 0.613
   vs 0.252; monitoring and metrics: 0.850 vs 0.387). On specific / tail queries it
@@ -275,7 +275,7 @@ shipped ranker's nDCG@10 falls more than **0.05** below the committed baseline.
   test skips-green only if the asset is ever unavailable, so CI never breaks on a
   missing artifact.
 
-### Two limitations of this eval, stated plainly
+### Two limitations of this eval
 
 Neither is smoothed over; both are real and bound how far these numbers should be
 pushed.
@@ -287,11 +287,11 @@ pushed.
 - **Shallow pools depress and can bias the scores.** Only ~27 repos across the 10
   queries are judged, so most of each ranker's top-10 is unjudged and counted as
   non-relevant by nDCG@10. That drags every score down in absolute terms and can
-  bias the between-ranker comparison, since a ranker that surfaces genuinely
+  bias the between-ranker comparison, since a ranker that surfaces
   relevant but unjudged repos is penalized for it. These numbers are sound for
   regression detection and relative comparison, not as absolute relevance.
 
-The **highest-leverage next eval step is pooling**, not more queries: take the
+The next eval step is **pooling**, not more queries: take the
 union of each ranker's top-k per query, judge that pool, and re-score. That
 directly removes the unjudged-as-non-relevant bias, and it is far cheaper than
 expanding the query set, so it comes first.

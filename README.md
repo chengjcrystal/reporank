@@ -1,9 +1,9 @@
 # RepoRank: GitHub Repository Search Engine
 
-**TLDR:** GitHub's search matches keywords, so genuinely strong repos get
+**TLDR:** GitHub's search matches keywords, so strong repos get
 buried under name-collisions and forks. RepoRank re-ranks repository search by
 combining how well a repo's text matches your query with how strong the project is
-(stars, recency), and it measures whether that ranking is actually better on a
+(stars, recency), and it measures whether that ranking is better on a
 hand-labeled test set instead of assuming it.
 
 Under the hood: a **custom inverted index** and **BM25 / BM25F ranking built from
@@ -11,11 +11,11 @@ scratch** (no Elasticsearch / Algolia), a quality-aware blended ranker (text
 relevance + popularity + recency), and a ranking-regression gate that scores
 nDCG / MRR / P@5 against a frozen **157,083-repo** index in CI.
 
-[Live Demo](https://reporank-jgoo.onrender.com) (free tier caps memory at
-512MB, so the public demo serves the top 50k repos by stars instead of the
-full 157k corpus, and sleeps after 15 min idle, so the first hit can take
-30-50s to wake). The crawl, benchmarks, and CI eval gate below all run on the
-full 157k index; only the live demo is trimmed.
+[Live Demo](https://reporank-jgoo.onrender.com): the free tier caps memory at
+512MB, so the demo serves the top 50k repos by stars instead of the full 157k
+corpus. A GitHub Actions ping every 5 minutes keeps it awake; if it does fall
+asleep, the first hit takes 30-50s. The crawl, benchmarks, and CI eval gate
+below all run on the full 157k index.
 
 > **157k** repos crawled · index loads in **0.6 s** · **~100 QPS** single-process,
 > **15-20x** with the cache · **54 tests** + a ranking gate running in CI
@@ -46,7 +46,7 @@ The **ingestion** path (offline batch) is cleanly separated from the **serving**
 path (online, in-memory, low-latency). The search index is a *derived artifact*:
 it can always be rebuilt from the database.
 
-## Quickstart (zero setup, uses SQLite + seed data)
+## Quickstart (Zero Setup)
 
 ```bash
 cd reporank
@@ -66,7 +66,7 @@ autocomplete, language / stars / topic filters, per-result score and latency
 badges, and an analytics panel) and try `distributed systems projects` or
 `FastAPI PostgreSQL`. Auto-generated API docs live at **/docs**.
 
-## Crawl real data
+## Crawl Real Data
 
 ```bash
 echo "GITHUB_TOKEN=ghp_xxx" >> .env       # 60 -> 5000 req/hr
@@ -87,7 +87,7 @@ mid-crawl crashes (a transient GitHub 502 and a data collision) by resuming from
 `crawl_state` each time. Full numbers and caveats are in
 [BENCHMARKS.md](BENCHMARKS.md).
 
-## Use Postgres instead of SQLite
+## Postgres Setup
 
 ```bash
 docker compose up -d db
@@ -95,7 +95,7 @@ pip install "psycopg[binary]"
 # in .env:  DATABASE_URL=postgresql+psycopg://ghsearch:ghsearch@localhost:5432/ghsearch
 ```
 
-## Search internals
+## Search Internals
 
 - **Tokenizer** (`app/search/tokenizer.py`): lowercase, tech-aware (keeps `c++`,
   `node.js`), curated stopwords, identical for indexing and querying.
@@ -130,7 +130,7 @@ Build time is linear in corpus size (~300 us/doc); vocabulary grows sublinearly
 second, which is why the in-memory design needs no sharding at this scale. The
 full scaling curve (1k to 157k) is in [BENCHMARKS.md](BENCHMARKS.md).
 
-### Serving latency + cache
+### Serving Latency + Cache
 
 Load-tested over the full corpus
 (`scripts/bench_latency.py`), a single process scoring BM25 term-at-a-time
@@ -141,9 +141,9 @@ at 32 concurrent). An LRU result cache (`app/search/cache.py`, on by default via
 GIL-bound, so the next lever past the cache is multi-process workers, not a
 bigger cache. Full percentile tables are in [BENCHMARKS.md](BENCHMARKS.md).
 
-## Ranking evaluation + CI gate
+## Ranking Evaluation + CI Gate
 
-Ranking changes are measured, not eyeballed. A hand-labeled judgment set
+A hand-labeled judgment set
 (`app/eval/qrels.py`) grades repos per query (0-3, keyed on repo full_name), and
 **nDCG@10 / MRR / P@5** (`app/eval/metrics.py`, from scratch) score each ranker
 variant. The eval runs against a **frozen snapshot of the full 157k-repo index**
@@ -165,11 +165,10 @@ python -m app.cli eval-gate     # fail if the shipped ranker regressed past the 
 
 At real-corpus scale the story inverts from a toy corpus. Pure BM25 collapses to
 0.183 because exact-lexical distractors bury the canonical repos, and blending in
-quality signal is what pulls the right repos into the top-10. That is the whole
-argument for the blended ranker, now backed by measurement against 150k
-distractors rather than intuition.
+quality signal is what pulls the right repos into the top-10. That is the
+argument for the blended ranker, measured against 150k distractors.
 
-### Why bm25f_v1 ships instead of the top-scoring ranker
+### Why bm25f_v1 Ships
 
 popularity_heavy has the higher point estimate (0.513 vs 0.424), but at n=10 the CIs overlap
 heavily, so the two are a statistical tie, not a ranking. The tie breaks on
@@ -180,16 +179,16 @@ by sorting popular-but-off-topic repos to the top (e.g. `raft consensus algorith
 bm25f_v1 is content-driven and is the field-weighting the project exists to
 demonstrate, so it ships; popularity_heavy stays as a documented comparison.
 
-### The gate
+### The Gate
 
 `app/eval/gate.py` fails the build if the shipped ranker's nDCG@10 drops more than
 `MARGIN` (0.05) below a committed baseline, scored in CI against the frozen index
 (downloaded from a release asset). Full method and per-query detail are in
 [BENCHMARKS.md](BENCHMARKS.md).
 
-### Known limitations of the eval
+### Known Eval Limitations
 
-This judgment set is small, and the numbers come with two honest caveats:
+This judgment set is small, and the numbers come with two caveats:
 
 - **n=10 queries: the top two rankers are statistically indistinguishable.** The
   bootstrap 95% CIs overlap heavily (popularity_heavy [0.385, 0.662] vs bm25f_v1
@@ -199,11 +198,11 @@ This judgment set is small, and the numbers come with two honest caveats:
 - **Shallow pools bias the absolute numbers down.** Only ~27 repos across the 10
   queries are judged, so most of each ranker's top-10 is unjudged and scored as
   non-relevant. That depresses every nDCG@10 and can bias the between-ranker
-  comparison (a ranker surfacing genuinely relevant but unjudged repos is punished
+  comparison (a ranker surfacing relevant but unjudged repos is punished
   for it). The scores are useful for regression detection and relative comparison,
   not as absolute relevance.
 
-The **highest-leverage next eval step is pooling**: take the union of each ranker's
+The next eval step is **pooling**: take the union of each ranker's
 top-k per query, judge that pool, and re-score. That removes the unjudged-as-
 non-relevant bias far more cheaply than blindly writing more queries, so it comes
 before any query-set expansion.
