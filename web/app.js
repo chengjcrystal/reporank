@@ -96,17 +96,17 @@ function card(r, query, ranker) {
   el.className = "card";
   el.innerHTML = `
     <div class="card-head">
-      <a class="name" href="${r.html_url}" target="_blank" rel="noopener">${r.full_name}</a>
+      <a class="name" href="${escapeHtml(r.html_url)}" target="_blank" rel="noopener">${escapeHtml(r.full_name)}</a>
       <span class="score" title="blended score (bm25 component)">score ${r.score} · bm25 ${r.bm25}</span>
     </div>
     <div class="desc">${r.description ? escapeHtml(r.description) : "<em>No description</em>"}</div>
     <div class="card-stats">
-      ${r.language ? `<span class="lang-pill"><span class="lang-dot"></span>${r.language}</span>` : ""}
+      ${r.language ? `<span class="lang-pill"><span class="lang-dot"></span>${escapeHtml(r.language)}</span>` : ""}
       <span>★ ${r.stars.toLocaleString()}</span>
       <span>⑂ ${r.forks.toLocaleString()}</span>
       <span>updated ${relativeTime(r.pushed_at)}</span>
     </div>
-    <div class="tags">${r.topics.slice(0, 8).map((t) => `<span class="tag">${t}</span>`).join("")}</div>
+    <div class="tags">${r.topics.slice(0, 8).map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>
   `;
   el.querySelector("a.name").addEventListener("click", () => {
     fetch("/api/events/click", {
@@ -134,7 +134,22 @@ function syncUrl() {
 async function runSearch() {
   syncUrl();
   const params = buildParams();
-  const data = await fetch(`/api/search?${params}`).then((r) => r.json());
+  let res;
+  try {
+    res = await fetch(`/api/search?${params}`);
+  } catch {
+    res = null;
+  }
+  if (!res || !res.ok) {
+    const msg = res && res.status === 429
+      ? "Too many searches. Wait a minute and try again."
+      : "Search failed. The server may be waking up, try again in a moment.";
+    $("meta").innerHTML = "";
+    $("results").innerHTML = `<div class="empty">${msg}</div>`;
+    $("pager").innerHTML = "";
+    return;
+  }
+  const data = await res.json();
   state.total = data.total;
 
   $("meta").innerHTML = `<span><b>${data.total.toLocaleString()}</b> results</span>
@@ -190,15 +205,15 @@ async function showStats() {
   panel.innerHTML = `
     <h3>Analytics</h3>
     <div class="stat-grid">
-      <div class="stat-box"><div class="num">${s.repositories_indexed.toLocaleString()}</div><div class="lbl">repos indexed</div></div>
-      <div class="stat-box"><div class="num">${s.vocabulary_size.toLocaleString()}</div><div class="lbl">vocabulary terms</div></div>
-      <div class="stat-box"><div class="num">${s.total_searches}</div><div class="lbl">searches</div></div>
-      <div class="stat-box"><div class="num">${(s.ctr * 100).toFixed(1)}%</div><div class="lbl">click-through rate</div></div>
-      <div class="stat-box"><div class="num">${s.latency_p50_ms}</div><div class="lbl">p50 latency (ms)</div></div>
-      <div class="stat-box"><div class="num">${s.latency_p95_ms}</div><div class="lbl">p95 latency (ms)</div></div>
-      <div class="stat-box"><div class="num">${s.zero_result_searches}</div><div class="lbl">zero-result searches</div></div>
+      <div class="stat-box"><div class="num">${s.repositories_indexed.toLocaleString()}</div><div class="lbl">Repos Indexed</div></div>
+      <div class="stat-box"><div class="num">${s.vocabulary_size.toLocaleString()}</div><div class="lbl">Vocabulary Terms</div></div>
+      <div class="stat-box"><div class="num">${s.total_searches}</div><div class="lbl">Searches</div></div>
+      <div class="stat-box"><div class="num">${(s.ctr * 100).toFixed(1)}%</div><div class="lbl">Click-Through Rate</div></div>
+      <div class="stat-box"><div class="num">${s.latency_p50_ms}</div><div class="lbl">P50 Latency (ms)</div></div>
+      <div class="stat-box"><div class="num">${s.latency_p95_ms}</div><div class="lbl">P95 Latency (ms)</div></div>
+      <div class="stat-box"><div class="num">${s.zero_result_searches}</div><div class="lbl">Zero-Result Searches</div></div>
     </div>
-    <h4>Top queries</h4>
+    <h4>Top Queries</h4>
     ${s.top_queries.map((q) => `<div class="tq-row"><span>${escapeHtml(q.query)}</span><span>${q.count}</span></div>`).join("") || "<p class='lbl'>No queries yet.</p>"}
   `;
   panel.classList.remove("hidden");
