@@ -8,4 +8,8 @@ if [ ! -f "$INDEX_PATH" ] && [ -n "$INDEX_SNAPSHOT_URL" ]; then
   curl -fsSL -o "$INDEX_PATH" "$INDEX_SNAPSHOT_URL"
 fi
 
-exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8080}"
+# Render's proxy connects from varying internal IPs, so without this the rate
+# limiter keys on the proxy instead of the visitor and never trips. Only the
+# proxy can reach the container, so trusting X-Forwarded-For here is fine.
+exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8080}" \
+  --proxy-headers --forwarded-allow-ips "*"
