@@ -1,6 +1,7 @@
-# Runtime image for Cloud Run. Serves the FastAPI app + static web/ SPA from
-# one process; the 157k-repo search index is fetched at container start from a
-# GitHub release asset (too large to bake into the image or commit to git).
+# Runtime image (deployed on Render). Serves the FastAPI app and the static
+# web/ SPA from one process; the prebuilt search index is fetched at container
+# start from a GitHub release asset (too large to bake into the image or commit
+# to git).
 FROM python:3.13-slim
 
 WORKDIR /app
